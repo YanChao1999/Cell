@@ -10,9 +10,9 @@ import (
 
 func TestDockerRunArgsHardening(t *testing.T) {
 	args, err := dockerRunArgs(runtime.CreateOpts{
-		CellID:      "abc",
-		Workspace:   "/tmp/cell-ws",
-		Image:       "golang:1.23-bookworm",
+		CellID:       "abc",
+		Workspace:    "/tmp/cell-ws",
+		Image:        "golang:1.23-bookworm",
 		GitReposRoot: "/tmp/cell-repos",
 		CacheMounts: []cache.Mount{{
 			HostKey:   "go-mod",
@@ -59,9 +59,9 @@ func containsArg(args []string, want string) bool {
 
 func TestDockerRunArgsRejectsRelativeRepos(t *testing.T) {
 	_, err := dockerRunArgs(runtime.CreateOpts{
-		CellID:      "x",
-		Workspace:   "/tmp/ws",
-		Image:       "golang:1.23-bookworm",
+		CellID:       "x",
+		Workspace:    "/tmp/ws",
+		Image:        "golang:1.23-bookworm",
 		GitReposRoot: "relative/repos",
 	}, "", "cell-x")
 	if err == nil {
