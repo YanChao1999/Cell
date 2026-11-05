@@ -94,8 +94,8 @@ func prettyJSON(body []byte) {
 	fmt.Println(buf.String())
 }
 
-func doHealth() error {
-	resp, err := unixClient().Get("http://localhost/health")
+func getAndPrintJSON(url string) error {
+	resp, err := unixClient().Get(url)
 	if err != nil {
 		return err
 	}
@@ -105,15 +105,12 @@ func doHealth() error {
 	return nil
 }
 
+func doHealth() error {
+	return getAndPrintJSON("http://localhost/health")
+}
+
 func doList() error {
-	resp, err := unixClient().Get("http://localhost/v1/cells")
-	if err != nil {
-		return err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	body, _ := io.ReadAll(resp.Body)
-	prettyJSON(body)
-	return nil
+	return getAndPrintJSON("http://localhost/v1/cells")
 }
 
 func doDestroy(id string) error {
