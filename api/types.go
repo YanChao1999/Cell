@@ -1,17 +1,17 @@
-// Package api defines shared HTTP/JSON types for the Spark Agent API.
+// Package api defines shared HTTP/JSON types for the Cell Agent API.
 package api
 
 import "time"
 
-// Limits are optional resource caps for a Spark.
+// Limits are optional resource caps for a Cell.
 type Limits struct {
 	CPU    string `json:"cpu,omitempty"`
 	Memory string `json:"memory,omitempty"`
 	Disk   string `json:"disk,omitempty"`
 }
 
-// CreateSparkRequest is the body for POST /v1/sparks.
-type CreateSparkRequest struct {
+// CreateCellRequest is the body for POST /v1/cells.
+type CreateCellRequest struct {
 	Repo           string   `json:"repo,omitempty"`
 	Ref            string   `json:"ref,omitempty"`
 	Environment    string   `json:"environment,omitempty"`
@@ -22,8 +22,8 @@ type CreateSparkRequest struct {
 	CacheHints     []string `json:"cache_hints,omitempty"`
 }
 
-// SparkInfo is returned by create/get/list.
-type SparkInfo struct {
+// CellInfo is returned by create/get/list.
+type CellInfo struct {
 	ID          string    `json:"id"`
 	WorkerID    string    `json:"worker_id"`
 	Environment string    `json:"environment"`
@@ -31,7 +31,7 @@ type SparkInfo struct {
 	ExpiresAt   time.Time `json:"expires_at"`
 }
 
-// ExecRequest is the body for POST /v1/sparks/{id}/exec.
+// ExecRequest is the body for POST /v1/cells/{id}/exec.
 type ExecRequest struct {
 	Command        string `json:"command"`
 	TimeoutSeconds int    `json:"timeout_seconds,omitempty"`
@@ -46,7 +46,7 @@ type ExecResult struct {
 
 // RunRequest is POST /v1/run — create, exec commands, destroy.
 type RunRequest struct {
-	CreateSparkRequest
+	CreateCellRequest
 	Commands []string `json:"commands,omitempty"`
 }
 

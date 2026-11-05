@@ -1,4 +1,4 @@
-// Package scheduler places Sparks onto workers.
+// Package scheduler places Cells onto workers.
 package scheduler
 
 import (
@@ -8,7 +8,7 @@ import (
 	"github.com/YanChao1999/spark/internal/workerapi"
 )
 
-// Scheduler selects a worker for CreateSpark placement.
+// Scheduler selects a worker for CreateCell placement.
 // Order: prefer_local (client_worker_id) → warm CacheHints → free capacity.
 type Scheduler struct {
 	workers []workerapi.Worker
@@ -41,7 +41,7 @@ func (s *Scheduler) Get(id string) (workerapi.Worker, bool) {
 }
 
 // Place chooses a worker for the create request.
-func (s *Scheduler) Place(req api.CreateSparkRequest) (workerapi.Worker, error) {
+func (s *Scheduler) Place(req api.CreateCellRequest) (workerapi.Worker, error) {
 	if len(s.workers) == 0 {
 		return nil, fmt.Errorf("scheduler: no workers registered")
 	}

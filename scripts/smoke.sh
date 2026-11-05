@@ -3,21 +3,21 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 export PATH="${HOME}/.local/go/bin:/usr/local/go/bin:${PATH}"
-SOCKET="${SPARK_SOCKET:-${HOME}/.spark/sparkd.sock}"
-SPARK_HOME="${SPARK_HOME:-${HOME}/.spark}"
-CACHE_DIR="${SPARK_CACHE_DIR:-${SPARK_HOME}/cache}"
-LOG_FILE="${SPARK_SMOKE_LOG:-/tmp/sparkd-smoke.log}"
-mkdir -p "$SPARK_HOME" "$(dirname "$SOCKET")"
+SOCKET="${CELL_SOCKET:-${HOME}/.cell/celld.sock}"
+CELL_HOME="${CELL_HOME:-${HOME}/.cell}"
+CACHE_DIR="${CELL_CACHE_DIR:-${CELL_HOME}/cache}"
+LOG_FILE="${CELL_SMOKE_LOG:-/tmp/celld-smoke.log}"
+mkdir -p "$CELL_HOME" "$(dirname "$SOCKET")"
 
 cd "$ROOT"
-go build -o bin/sparkd ./cmd/sparkd
-go build -o bin/spark ./cmd/spark
+go build -o bin/celld ./cmd/celld
+go build -o bin/cell ./cmd/cell
 
 # Prefer killing only our eventual PID; avoid broad pkill in CI.
 if [ -S "$SOCKET" ]; then
   rm -f "$SOCKET"
 fi
-./bin/sparkd serve --mode=all \
+./bin/celld serve --mode=all \
   --socket "$SOCKET" \
   --environments ./environments \
   --cache-dir "$CACHE_DIR" \
@@ -34,15 +34,15 @@ done
 curl -sf --unix-socket "$SOCKET" http://localhost/health | grep -q ok
 echo "OK health"
 
-CREATE=$(curl -sf --unix-socket "$SOCKET" -X POST http://localhost/v1/sparks \
+CREATE=$(curl -sf --unix-socket "$SOCKET" -X POST http://localhost/v1/cells \
   -H 'Content-Type: application/json' \
   -d '{"environment":"go-1.23","ttl":"5m"}')
 ID=$(printf '%s' "$CREATE" | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])')
-EXEC=$(curl -sf --unix-socket "$SOCKET" -X POST "http://localhost/v1/sparks/${ID}/exec" \
+EXEC=$(curl -sf --unix-socket "$SOCKET" -X POST "http://localhost/v1/cells/${ID}/exec" \
   -H 'Content-Type: application/json' \
   -d '{"command":"echo smoke-ok"}')
 printf '%s' "$EXEC" | grep -q smoke-ok
-curl -sf --unix-socket "$SOCKET" -X DELETE "http://localhost/v1/sparks/${ID}" -o /dev/null -w ''
+curl -sf --unix-socket "$SOCKET" -X DELETE "http://localhost/v1/cells/${ID}" -o /dev/null -w ''
 echo "OK create/exec/destroy"
 
 RUN=$(curl -sf --unix-socket "$SOCKET" -X POST http://localhost/v1/run \
@@ -51,10 +51,10 @@ RUN=$(curl -sf --unix-socket "$SOCKET" -X POST http://localhost/v1/run \
 printf '%s' "$RUN" | grep -q run-ok
 echo "OK /v1/run"
 
-export SPARK_SOCKET="$SOCKET"
-./bin/spark health >/dev/null
-./bin/spark run --env go-1.23 'echo cli-run' | grep -q cli-run
-echo "OK spark CLI"
+export CELL_SOCKET="$SOCKET"
+./bin/cell health >/dev/null
+./bin/cell run --env go-1.23 'echo cli-run' | grep -q cli-run
+echo "OK cell CLI"
 
 # Lightweight package checks only (not a full unit suite).
 go test ./internal/worker/cache/ ./internal/worker/envtemplate/

@@ -1,4 +1,4 @@
-// Package envtemplate loads Spark environment YAML templates (stdlib-only subset).
+// Package envtemplate loads Cell environment YAML templates (stdlib-only subset).
 package envtemplate
 
 import (

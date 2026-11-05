@@ -1,4 +1,4 @@
-"""Shared types for the Spark Python SDK."""
+"""Shared types for the Cell Python SDK."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ class LimitsDict(TypedDict, total=False):
     disk: str
 
 
-class CreateSparkRequest(TypedDict, total=False):
+class CreateCellRequest(TypedDict, total=False):
     repo: str
     ref: str
     environment: str
@@ -27,7 +27,7 @@ class ExecRequest(TypedDict, total=False):
     timeout_seconds: int
 
 
-class RunRequest(CreateSparkRequest, total=False):
+class RunRequest(CreateCellRequest, total=False):
     commands: list[str]
 
 
@@ -78,8 +78,8 @@ class ExecResult:
 
 
 @dataclass
-class SparkInfo:
-    """Metadata returned by CreateSpark / GetSpark / ListSparks."""
+class CellInfo:
+    """Metadata returned by CreateCell / GetCell / ListCells."""
 
     id: str
     worker_id: str = ""
@@ -89,7 +89,7 @@ class SparkInfo:
     raw: dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> SparkInfo:
+    def from_dict(cls, data: dict[str, Any]) -> CellInfo:
         return cls(
             id=str(data["id"]),
             worker_id=str(data.get("worker_id", "")),

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Minimal Spark Python SDK example.
+"""Minimal Cell Python SDK example.
 
-Requires a running sparkd daemon (default: ~/.spark/sparkd.sock).
+Requires a running celld daemon (default: ~/.cell/celld.sock).
 """
 
 from __future__ import annotations
@@ -9,21 +9,21 @@ from __future__ import annotations
 import asyncio
 import sys
 
-from spark import Client
+from cell import Client
 
 
 async def main() -> int:
     repo = sys.argv[1] if len(sys.argv) > 1 else "https://github.com/example/app"
     async with Client() as client:
-        spark = await client.create(
+        cell = await client.create(
             repo=repo,
             ref="main",
             environment="go-1.23",
             ttl="30m",
         )
-        print(f"created spark {spark.id} on worker {spark.worker_id}")
+        print(f"created cell {cell.id} on worker {cell.worker_id}")
         try:
-            result = await spark.exec("go test ./...")
+            result = await cell.exec("go test ./...")
             print(f"exit={result.exit_code}")
             if result.stdout:
                 print(result.stdout, end="")
@@ -31,8 +31,8 @@ async def main() -> int:
                 print(result.stderr, end="", file=sys.stderr)
             return result.exit_code
         finally:
-            await spark.destroy()
-            print(f"destroyed spark {spark.id}")
+            await cell.destroy()
+            print(f"destroyed cell {cell.id}")
 
 
 if __name__ == "__main__":

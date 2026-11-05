@@ -1,4 +1,4 @@
-// Command spark is a thin ops CLI for the Spark agent API.
+// Command cell is a thin ops CLI for the Cell agent API.
 package main
 
 import (
@@ -28,12 +28,12 @@ func main() {
 		err = doRun(os.Args[2:])
 	case "destroy":
 		if len(os.Args) < 3 {
-			err = fmt.Errorf("usage: spark destroy <id>")
+			err = fmt.Errorf("usage: cell destroy <id>")
 		} else {
 			err = doDestroy(os.Args[2])
 		}
 	case "version", "-version", "--version":
-		fmt.Println("spark 0.3.0")
+		fmt.Println("cell 0.3.0")
 	case "help", "-h", "--help":
 		usage()
 	default:
@@ -48,29 +48,29 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintf(os.Stderr, `spark — thin ops CLI for the Spark agent API
+	fmt.Fprintf(os.Stderr, `cell — thin ops CLI for the Cell agent API
 
 Usage:
-  spark health
-  spark list
-  spark run [--env NAME] [--repo URL] [--ref REF] <command> [command...]
-  spark destroy <id>
-  spark version
+  cell health
+  cell list
+  cell run [--env NAME] [--repo URL] [--ref REF] <command> [command...]
+  cell destroy <id>
+  cell version
 
-Socket: SPARK_SOCKET or ~/.spark/sparkd.sock
+Socket: CELL_SOCKET or ~/.cell/celld.sock
 Primary agent client is the Python SDK (sdk/python).
 `)
 }
 
 func socketPath() string {
-	if p := os.Getenv("SPARK_SOCKET"); p != "" {
+	if p := os.Getenv("CELL_SOCKET"); p != "" {
 		return p
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return filepath.Join("/tmp", "sparkd.sock")
+		return filepath.Join("/tmp", "celld.sock")
 	}
-	return filepath.Join(home, ".spark", "sparkd.sock")
+	return filepath.Join(home, ".cell", "celld.sock")
 }
 
 func unixClient() *http.Client {
@@ -99,25 +99,25 @@ func doHealth() error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(resp.Body)
 	prettyJSON(body)
 	return nil
 }
 
 func doList() error {
-	resp, err := unixClient().Get("http://localhost/v1/sparks")
+	resp, err := unixClient().Get("http://localhost/v1/cells")
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(resp.Body)
 	prettyJSON(body)
 	return nil
 }
 
 func doDestroy(id string) error {
-	req, err := http.NewRequest(http.MethodDelete, "http://localhost/v1/sparks/"+id, nil)
+	req, err := http.NewRequest(http.MethodDelete, "http://localhost/v1/cells/"+id, nil)
 	if err != nil {
 		return err
 	}
@@ -125,7 +125,7 @@ func doDestroy(id string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("destroy: %s: %s", resp.Status, body)
@@ -164,7 +164,7 @@ func doRun(args []string) error {
 		}
 	}
 	if len(cmds) == 0 {
-		return fmt.Errorf("usage: spark run [--env NAME] [--repo URL] [--ref REF] <command>...")
+		return fmt.Errorf("usage: cell run [--env NAME] [--repo URL] [--ref REF] <command>")
 	}
 	payload := map[string]any{
 		"environment":  env,
@@ -179,7 +179,7 @@ func doRun(args []string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode >= 300 {
 		return fmt.Errorf("run: %s: %s", resp.Status, body)

@@ -27,8 +27,8 @@ jobs:
 
       - name: Build
         run: |
-          go build -o bin/sparkd ./cmd/sparkd
-          go build -o bin/spark ./cmd/spark
+          go build -o bin/celld ./cmd/celld
+          go build -o bin/cell ./cmd/cell
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v7
@@ -50,12 +50,12 @@ jobs:
 
       - name: API smoke (host fallback)
         env:
-          SPARK_SOCKET: /tmp/sparkd-ci.sock
-          SPARK_SMOKE_LOG: /tmp/sparkd-ci.log
+          CELL_SOCKET: /tmp/celld-ci.sock
+          CELL_SMOKE_LOG: /tmp/celld-ci.log
           HOME: ${{ runner.temp }}
         run: |
           chmod +x scripts/smoke.sh
-          mkdir -p "$HOME/.spark"
+          mkdir -p "$HOME/.cell"
           ./scripts/smoke.sh
 
   python:

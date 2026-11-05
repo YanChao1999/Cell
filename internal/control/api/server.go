@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	sparkapi "github.com/YanChao1999/spark/api"
+	cellapi "github.com/YanChao1999/spark/api"
 	"github.com/YanChao1999/spark/internal/control/meta"
 	"github.com/YanChao1999/spark/internal/control/scheduler"
 )
@@ -37,11 +37,11 @@ func New(m *meta.Store, sched *scheduler.Scheduler) *Server {
 
 func (s *Server) routes() {
 	s.mux.HandleFunc("GET /health", s.handleHealth)
-	s.mux.HandleFunc("POST /v1/sparks", s.handleCreate)
-	s.mux.HandleFunc("GET /v1/sparks", s.handleList)
-	s.mux.HandleFunc("GET /v1/sparks/{id}", s.handleGet)
-	s.mux.HandleFunc("DELETE /v1/sparks/{id}", s.handleDelete)
-	s.mux.HandleFunc("POST /v1/sparks/{id}/exec", s.handleExec)
+	s.mux.HandleFunc("POST /v1/cells", s.handleCreate)
+	s.mux.HandleFunc("GET /v1/cells", s.handleList)
+	s.mux.HandleFunc("GET /v1/cells/{id}", s.handleGet)
+	s.mux.HandleFunc("DELETE /v1/cells/{id}", s.handleDelete)
+	s.mux.HandleFunc("POST /v1/cells/{id}/exec", s.handleExec)
 	s.mux.HandleFunc("POST /v1/run", s.handleRun)
 }
 
@@ -58,9 +58,9 @@ func (s *Server) ListenAndServe(socketPath string) error {
 	if err != nil {
 		return err
 	}
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 	_ = os.Chmod(socketPath, 0o600)
-	log.Printf("sparkd listening on unix://%s", socketPath)
+	log.Printf("celld listening on unix://%s", socketPath)
 	return http.Serve(ln, s.mux)
 }
 
@@ -69,12 +69,12 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
-	var req sparkapi.CreateSparkRequest
+	var req cellapi.CreateCellRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	info, err := s.createSpark(r.Context(), req)
+	info, err := s.createCell(r.Context(), req)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -82,29 +82,29 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, info)
 }
 
-func (s *Server) createSpark(ctx context.Context, req sparkapi.CreateSparkRequest) (*sparkapi.SparkInfo, error) {
+func (s *Server) createCell(ctx context.Context, req cellapi.CreateCellRequest) (*cellapi.CellInfo, error) {
 	worker, err := s.scheduler.Place(req)
 	if err != nil {
 		return nil, err
 	}
-	spark, err := worker.CreateSpark(ctx, req)
+	cell, err := worker.CreateCell(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 	ttl := parseTTL(req.TTL)
 	now := time.Now().UTC()
 	rec := &meta.Record{
-		ID:          spark.ID,
+		ID:          cell.ID,
 		WorkerID:    worker.ID(),
-		Environment: spark.Environment,
-		Status:      spark.Status,
+		Environment: cell.Environment,
+		Status:      cell.Status,
 		CreatedAt:   now,
 		ExpiresAt:   now.Add(ttl),
 		Repo:        req.Repo,
 		Ref:         req.Ref,
 	}
 	if err := s.meta.Put(rec); err != nil {
-		_ = worker.DestroySpark(ctx, spark.ID)
+		_ = worker.DestroyCell(ctx, cell.ID)
 		return nil, err
 	}
 	return recordToInfo(rec), nil
@@ -112,7 +112,7 @@ func (s *Server) createSpark(ctx context.Context, req sparkapi.CreateSparkReques
 
 func (s *Server) handleList(w http.ResponseWriter, r *http.Request) {
 	recs := s.meta.List()
-	out := make([]*sparkapi.SparkInfo, 0, len(recs))
+	out := make([]*cellapi.CellInfo, 0, len(recs))
 	for _, rec := range recs {
 		out = append(out, recordToInfo(rec))
 	}
@@ -123,7 +123,7 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	rec, ok := s.meta.Get(id)
 	if !ok {
-		writeErr(w, http.StatusNotFound, "spark not found")
+		writeErr(w, http.StatusNotFound, "cell not found")
 		return
 	}
 	writeJSON(w, http.StatusOK, recordToInfo(rec))
@@ -131,7 +131,7 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if err := s.destroySpark(r.Context(), id); err != nil {
+	if err := s.destroyCell(r.Context(), id); err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			writeErr(w, http.StatusNotFound, err.Error())
 			return
@@ -142,34 +142,34 @@ func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// DestroySpark is used by the reaper and DELETE handler.
-func (s *Server) DestroySpark(ctx context.Context, sparkID, workerID string) error {
-	return s.destroySparkOn(ctx, sparkID, workerID)
+// DestroyCell is used by the reaper and DELETE handler.
+func (s *Server) DestroyCell(ctx context.Context, cellID, workerID string) error {
+	return s.destroyCellOn(ctx, cellID, workerID)
 }
 
-func (s *Server) destroySpark(ctx context.Context, id string) error {
+func (s *Server) destroyCell(ctx context.Context, id string) error {
 	rec, ok := s.meta.Get(id)
 	if !ok {
-		return fmt.Errorf("spark %s not found", id)
+		return fmt.Errorf("cell %s not found", id)
 	}
-	return s.destroySparkOn(ctx, id, rec.WorkerID)
+	return s.destroyCellOn(ctx, id, rec.WorkerID)
 }
 
-func (s *Server) destroySparkOn(ctx context.Context, sparkID, workerID string) error {
+func (s *Server) destroyCellOn(ctx context.Context, cellID, workerID string) error {
 	if w, ok := s.scheduler.Get(workerID); ok {
-		_ = w.DestroySpark(ctx, sparkID)
+		_ = w.DestroyCell(ctx, cellID)
 	}
-	return s.meta.Delete(sparkID)
+	return s.meta.Delete(cellID)
 }
 
 func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	var req sparkapi.ExecRequest
+	var req cellapi.ExecRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	result, err := s.execSpark(r.Context(), id, req)
+	result, err := s.execCell(r.Context(), id, req)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			writeErr(w, http.StatusNotFound, err.Error())
@@ -181,34 +181,34 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, result)
 }
 
-func (s *Server) execSpark(ctx context.Context, id string, req sparkapi.ExecRequest) (*sparkapi.ExecResult, error) {
+func (s *Server) execCell(ctx context.Context, id string, req cellapi.ExecRequest) (*cellapi.ExecResult, error) {
 	rec, ok := s.meta.Get(id)
 	if !ok {
-		return nil, fmt.Errorf("spark %s not found", id)
+		return nil, fmt.Errorf("cell %s not found", id)
 	}
 	w, ok := s.scheduler.Get(rec.WorkerID)
 	if !ok {
-		return nil, fmt.Errorf("worker %s not found for spark %s", rec.WorkerID, id)
+		return nil, fmt.Errorf("worker %s not found for cell %s", rec.WorkerID, id)
 	}
 	return w.Exec(ctx, id, req)
 }
 
 func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
-	var req sparkapi.RunRequest
+	var req cellapi.RunRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	info, err := s.createSpark(r.Context(), req.CreateSparkRequest)
+	info, err := s.createCell(r.Context(), req.CreateCellRequest)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	results := make([]sparkapi.ExecResult, 0, len(req.Commands))
+	results := make([]cellapi.ExecResult, 0, len(req.Commands))
 	for _, cmd := range req.Commands {
-		res, err := s.execSpark(r.Context(), info.ID, sparkapi.ExecRequest{Command: cmd})
+		res, err := s.execCell(r.Context(), info.ID, cellapi.ExecRequest{Command: cmd})
 		if err != nil {
-			results = append(results, sparkapi.ExecResult{ExitCode: 126, Stderr: err.Error()})
+			results = append(results, cellapi.ExecResult{ExitCode: 126, Stderr: err.Error()})
 			break
 		}
 		results = append(results, *res)
@@ -217,18 +217,18 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	destroyed := true
-	if err := s.destroySpark(r.Context(), info.ID); err != nil {
+	if err := s.destroyCell(r.Context(), info.ID); err != nil {
 		destroyed = false
 	}
-	writeJSON(w, http.StatusOK, sparkapi.RunResult{
+	writeJSON(w, http.StatusOK, cellapi.RunResult{
 		ID:        info.ID,
 		Results:   results,
 		Destroyed: destroyed,
 	})
 }
 
-func recordToInfo(r *meta.Record) *sparkapi.SparkInfo {
-	return &sparkapi.SparkInfo{
+func recordToInfo(r *meta.Record) *cellapi.CellInfo {
+	return &cellapi.CellInfo{
 		ID:          r.ID,
 		WorkerID:    r.WorkerID,
 		Environment: r.Environment,
@@ -255,5 +255,5 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 }
 
 func writeErr(w http.ResponseWriter, status int, msg string) {
-	writeJSON(w, status, sparkapi.ErrorResponse{Error: msg})
+	writeJSON(w, status, cellapi.ErrorResponse{Error: msg})
 }

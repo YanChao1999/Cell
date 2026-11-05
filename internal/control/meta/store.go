@@ -1,4 +1,4 @@
-// Package meta stores durable Spark metadata (sticky worker placement).
+// Package meta stores durable Cell metadata (sticky worker placement).
 package meta
 
 import (
@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// Record is persisted Spark metadata.
+// Record is persisted Cell metadata.
 type Record struct {
 	ID          string    `json:"id"`
 	WorkerID    string    `json:"worker_id"`
@@ -31,7 +31,7 @@ type Store struct {
 }
 
 // New creates a Store. If stateDir is non-empty, records are persisted to
-// stateDir/sparks.json under ~/.spark/state/ typically.
+// stateDir/cells.json under ~/.cell/state/ typically.
 func New(stateDir string) (*Store, error) {
 	s := &Store{
 		byID: make(map[string]*Record),
@@ -41,7 +41,7 @@ func New(stateDir string) (*Store, error) {
 		if err := os.MkdirAll(stateDir, 0o755); err != nil {
 			return nil, err
 		}
-		s.path = filepath.Join(stateDir, "sparks.json")
+		s.path = filepath.Join(stateDir, "cells.json")
 		if err := s.load(); err != nil {
 			return nil, err
 		}
@@ -97,7 +97,7 @@ func (s *Store) Put(r *Record) error {
 	return s.persistLocked()
 }
 
-// Get returns a record by spark id.
+// Get returns a record by cell id.
 func (s *Store) Get(id string) (*Record, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -129,9 +129,9 @@ func (s *Store) List() []*Record {
 	return out
 }
 
-// WorkerID returns the sticky worker for a spark, if known.
-func (s *Store) WorkerID(sparkID string) (string, bool) {
-	r, ok := s.Get(sparkID)
+// WorkerID returns the sticky worker for a cell, if known.
+func (s *Store) WorkerID(cellID string) (string, bool) {
+	r, ok := s.Get(cellID)
 	if !ok {
 		return "", false
 	}

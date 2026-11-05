@@ -1,4 +1,4 @@
-// Package manager implements LocalWorker: spark lifecycle on a single host.
+// Package manager implements LocalWorker: cell lifecycle on a single host.
 package manager
 
 import (
@@ -19,10 +19,10 @@ import (
 	"github.com/YanChao1999/spark/internal/workerapi"
 )
 
-// LocalWorker manages Sparks on the local machine.
+// LocalWorker manages Cells on the local machine.
 type LocalWorker struct {
 	id         string
-	maxSparks  int
+	maxCells   int
 	workspaces string
 	rt         runtime.Runtime
 	source     git.Source
@@ -30,15 +30,15 @@ type LocalWorker struct {
 	cache      *cache.Layout
 	cacheIndex *cache.Index
 	mu         sync.Mutex
-	sparks     map[string]*workerapi.Spark
+	cells      map[string]*workerapi.Cell
 }
 
 // Options configure a LocalWorker.
 type Options struct {
 	ID             string
-	MaxSparks      int
-	WorkspacesRoot string // default ~/.spark/workspaces
-	CacheDir       string // durable package caches (default ~/.spark/cache)
+	MaxCells       int
+	WorkspacesRoot string // default ~/.cell/workspaces
+	CacheDir       string // durable package caches (default ~/.cell/cache)
 	Runtime        runtime.Runtime
 	Source         git.Source
 	EnvLoader      *envtemplate.Loader
@@ -51,15 +51,15 @@ func New(opts Options) (*LocalWorker, error) {
 	if opts.ID == "" {
 		opts.ID = "local"
 	}
-	if opts.MaxSparks <= 0 {
-		opts.MaxSparks = 32
+	if opts.MaxCells <= 0 {
+		opts.MaxCells = 32
 	}
 	if opts.WorkspacesRoot == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return nil, err
 		}
-		opts.WorkspacesRoot = filepath.Join(home, ".spark", "workspaces")
+		opts.WorkspacesRoot = filepath.Join(home, ".cell", "workspaces")
 	}
 	if opts.Runtime == nil {
 		return nil, fmt.Errorf("manager: Runtime is required")
@@ -78,7 +78,7 @@ func New(opts Options) (*LocalWorker, error) {
 			if err != nil {
 				return nil, err
 			}
-			cacheRoot = filepath.Join(home, ".spark", "cache")
+			cacheRoot = filepath.Join(home, ".cell", "cache")
 		}
 		layout = cache.NewLayout(cacheRoot)
 	}
@@ -92,14 +92,14 @@ func New(opts Options) (*LocalWorker, error) {
 	}
 	return &LocalWorker{
 		id:         opts.ID,
-		maxSparks:  opts.MaxSparks,
+		maxCells:   opts.MaxCells,
 		workspaces: opts.WorkspacesRoot,
 		rt:         opts.Runtime,
 		source:     opts.Source,
 		envs:       opts.EnvLoader,
 		cache:      layout,
 		cacheIndex: opts.CacheIndex,
-		sparks:     make(map[string]*workerapi.Spark),
+		cells:      make(map[string]*workerapi.Cell),
 	}, nil
 }
 
@@ -108,42 +108,42 @@ func (w *LocalWorker) ID() string { return w.id }
 func (w *LocalWorker) Capacity() workerapi.Capacity {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	return workerapi.Capacity{MaxSparks: w.maxSparks, UsedSparks: len(w.sparks)}
+	return workerapi.Capacity{MaxCells: w.maxCells, UsedCells: len(w.cells)}
 }
 
 func (w *LocalWorker) CacheIndex() workerapi.CacheIndex { return w.cacheIndex }
 
-// CreateSpark allocates an id, prepares workspace from source, resolves the
+// CreateCell allocates an id, prepares workspace from source, resolves the
 // environment template, then calls Runtime.Create.
-func (w *LocalWorker) CreateSpark(ctx context.Context, req api.CreateSparkRequest) (*workerapi.Spark, error) {
+func (w *LocalWorker) CreateCell(ctx context.Context, req api.CreateCellRequest) (*workerapi.Cell, error) {
 	w.mu.Lock()
-	if len(w.sparks) >= w.maxSparks {
+	if len(w.cells) >= w.maxCells {
 		w.mu.Unlock()
 		return nil, fmt.Errorf("worker %s: at capacity", w.id)
 	}
-	id, err := newSparkID()
+	id, err := newCellID()
 	if err != nil {
 		w.mu.Unlock()
 		return nil, err
 	}
 	ws := filepath.Join(w.workspaces, id)
-	spark := &workerapi.Spark{
+	cell := &workerapi.Cell{
 		ID:          id,
 		Workspace:   ws,
 		Environment: req.Environment,
 		Status:      "creating",
 	}
-	w.sparks[id] = spark
+	w.cells[id] = cell
 	w.mu.Unlock()
 
 	if err := os.MkdirAll(ws, 0o755); err != nil {
-		w.removeSpark(id)
+		w.removeCell(id)
 		return nil, err
 	}
 
 	if err := w.source.Fetch(ctx, req.Repo, req.Ref, ws); err != nil {
 		_ = os.RemoveAll(ws)
-		w.removeSpark(id)
+		w.removeCell(id)
 		return nil, err
 	}
 
@@ -151,7 +151,7 @@ func (w *LocalWorker) CreateSpark(ctx context.Context, req api.CreateSparkReques
 	if err != nil {
 		_ = w.source.Release(ctx, ws)
 		_ = os.RemoveAll(ws)
-		w.removeSpark(id)
+		w.removeCell(id)
 		return nil, err
 	}
 
@@ -160,7 +160,7 @@ func (w *LocalWorker) CreateSpark(ctx context.Context, req api.CreateSparkReques
 	}
 
 	if err := w.rt.Create(ctx, runtime.CreateOpts{
-		SparkID:     id,
+		CellID:      id,
 		Workspace:   ws,
 		Environment: req.Environment,
 		Image:       image,
@@ -170,17 +170,17 @@ func (w *LocalWorker) CreateSpark(ctx context.Context, req api.CreateSparkReques
 	}); err != nil {
 		_ = w.source.Release(ctx, ws)
 		_ = os.RemoveAll(ws)
-		w.removeSpark(id)
+		w.removeCell(id)
 		return nil, err
 	}
 
 	w.mu.Lock()
-	spark.Status = "ready"
+	cell.Status = "ready"
 	w.mu.Unlock()
-	return spark, nil
+	return cell, nil
 }
 
-func (w *LocalWorker) resolveEnv(req api.CreateSparkRequest) (
+func (w *LocalWorker) resolveEnv(req api.CreateCellRequest) (
 	image string,
 	limits api.Limits,
 	env map[string]string,
@@ -224,20 +224,20 @@ func (w *LocalWorker) resolveEnv(req api.CreateSparkRequest) (
 	return image, limits, env, mounts, nil
 }
 
-func (w *LocalWorker) Exec(ctx context.Context, sparkID string, req api.ExecRequest) (*api.ExecResult, error) {
+func (w *LocalWorker) Exec(ctx context.Context, cellID string, req api.ExecRequest) (*api.ExecResult, error) {
 	w.mu.Lock()
-	spark, ok := w.sparks[sparkID]
+	cell, ok := w.cells[cellID]
 	w.mu.Unlock()
 	if !ok {
-		return nil, fmt.Errorf("spark %s not found on worker %s", sparkID, w.id)
+		return nil, fmt.Errorf("cell %s not found on worker %s", cellID, w.id)
 	}
 	timeout := req.TimeoutSeconds
 	if timeout <= 0 {
-		timeout = w.defaultExecTimeout(spark.Environment)
+		timeout = w.defaultExecTimeout(cell.Environment)
 	}
 	return w.rt.Exec(ctx, runtime.ExecOpts{
-		SparkID:        sparkID,
-		Workspace:      spark.Workspace,
+		CellID:         cellID,
+		Workspace:      cell.Workspace,
 		Command:        req.Command,
 		TimeoutSeconds: timeout,
 	})
@@ -262,18 +262,18 @@ func (w *LocalWorker) defaultExecTimeout(environment string) int {
 	return secs
 }
 
-func (w *LocalWorker) DestroySpark(ctx context.Context, sparkID string) error {
+func (w *LocalWorker) DestroyCell(ctx context.Context, cellID string) error {
 	w.mu.Lock()
-	spark, ok := w.sparks[sparkID]
+	cell, ok := w.cells[cellID]
 	if !ok {
 		w.mu.Unlock()
-		return fmt.Errorf("spark %s not found on worker %s", sparkID, w.id)
+		return fmt.Errorf("cell %s not found on worker %s", cellID, w.id)
 	}
-	delete(w.sparks, sparkID)
-	ws := spark.Workspace
+	delete(w.cells, cellID)
+	ws := cell.Workspace
 	w.mu.Unlock()
 
-	_ = w.rt.Destroy(ctx, sparkID)
+	_ = w.rt.Destroy(ctx, cellID)
 	_ = w.source.Release(ctx, ws)
 	if ws != "" {
 		_ = os.RemoveAll(ws)
@@ -281,17 +281,17 @@ func (w *LocalWorker) DestroySpark(ctx context.Context, sparkID string) error {
 	return nil
 }
 
-func (w *LocalWorker) removeSpark(id string) {
+func (w *LocalWorker) removeCell(id string) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	delete(w.sparks, id)
+	delete(w.cells, id)
 }
 
-// Get returns a local spark record if present.
-func (w *LocalWorker) Get(sparkID string) (*workerapi.Spark, bool) {
+// Get returns a local cell record if present.
+func (w *LocalWorker) Get(cellID string) (*workerapi.Cell, bool) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	s, ok := w.sparks[sparkID]
+	s, ok := w.cells[cellID]
 	return s, ok
 }
 
@@ -306,7 +306,7 @@ func cloneStringMap(in map[string]string) map[string]string {
 	return out
 }
 
-func newSparkID() (string, error) {
+func newCellID() (string, error) {
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {
 		return "", err

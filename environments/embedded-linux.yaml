@@ -2,7 +2,7 @@ name: embedded-linux
 description: Embedded Linux / Yocto-style build environment (placeholder image)
 
 # Placeholder — replace with a pinned Yocto/OE or Buildroot toolchain image.
-image: spark/embedded-linux:placeholder
+image: cell/embedded-linux:placeholder
 
 cache_mounts:
   - host: yocto-downloads

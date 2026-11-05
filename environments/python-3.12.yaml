@@ -7,7 +7,7 @@ cache_mounts:
   - host: pip-cache
     container: /root/.cache/pip
   - host: python-venv
-    container: /opt/spark/venv
+    container: /opt/cell/venv
 
 setup:
   - python --version

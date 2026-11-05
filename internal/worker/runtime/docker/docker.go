@@ -24,7 +24,7 @@ const (
 	modeDocker
 )
 
-type sparkRuntime struct {
+type cellRuntime struct {
 	mode      mode
 	container string // docker container name/id when modeDocker
 	workspace string
@@ -36,7 +36,7 @@ type sparkRuntime struct {
 type Runtime struct {
 	useDocker bool
 	mu        sync.Mutex
-	sparks    map[string]*sparkRuntime
+	cells     map[string]*cellRuntime
 }
 
 // New detects Docker availability and returns a Runtime.
@@ -49,7 +49,7 @@ func New() *Runtime {
 	}
 	return &Runtime{
 		useDocker: ok,
-		sparks:    make(map[string]*sparkRuntime),
+		cells:     make(map[string]*cellRuntime),
 	}
 }
 
@@ -77,11 +77,11 @@ func (r *Runtime) Create(ctx context.Context, opts runtime.CreateOpts) error {
 	defer r.mu.Unlock()
 
 	if r.useDocker && opts.Image != "" {
-		name := containerName(opts.SparkID)
+		name := containerName(opts.CellID)
 		args := []string{
 			"run", "-d",
 			"--name", name,
-			"--label", "spark.id=" + opts.SparkID,
+			"--label", "cell.id=" + opts.CellID,
 			"-v", opts.Workspace + ":/workspace",
 			"-w", "/workspace",
 		}
@@ -105,7 +105,7 @@ func (r *Runtime) Create(ctx context.Context, opts runtime.CreateOpts) error {
 			return fmt.Errorf("runtime/docker: docker run: %w\n%s", err, out)
 		}
 		id := strings.TrimSpace(string(out))
-		r.sparks[opts.SparkID] = &sparkRuntime{
+		r.cells[opts.CellID] = &cellRuntime{
 			mode:      modeDocker,
 			container: firstNonEmpty(id, name),
 			workspace: opts.Workspace,
@@ -115,14 +115,14 @@ func (r *Runtime) Create(ctx context.Context, opts runtime.CreateOpts) error {
 	}
 
 	if r.useDocker && opts.Image == "" {
-		log.Printf("runtime/docker: spark %s has no image; using host fallback", opts.SparkID)
+		log.Printf("runtime/docker: cell %s has no image; using host fallback", opts.CellID)
 	} else if !r.useDocker {
-		log.Printf("runtime/docker: spark %s using host fallback", opts.SparkID)
+		log.Printf("runtime/docker: cell %s using host fallback", opts.CellID)
 	}
 
 	// Host fallback: point tool caches at durable host dirs via env.
 	hostEnv := mergeEnv(opts.Env, cacheHostEnv(opts))
-	r.sparks[opts.SparkID] = &sparkRuntime{
+	r.cells[opts.CellID] = &cellRuntime{
 		mode:      modeHost,
 		workspace: opts.Workspace,
 		env:       hostEnv,
@@ -133,11 +133,11 @@ func (r *Runtime) Create(ctx context.Context, opts runtime.CreateOpts) error {
 // Exec runs a command in the container or on the host in the workspace.
 func (r *Runtime) Exec(ctx context.Context, opts runtime.ExecOpts) (*api.ExecResult, error) {
 	r.mu.Lock()
-	sr, ok := r.sparks[opts.SparkID]
+	sr, ok := r.cells[opts.CellID]
 	r.mu.Unlock()
 	if !ok {
 		// Allow exec if Create was skipped somehow: host fallback.
-		sr = &sparkRuntime{mode: modeHost, workspace: opts.Workspace}
+		sr = &cellRuntime{mode: modeHost, workspace: opts.Workspace}
 	}
 
 	if opts.Command == "" {
@@ -194,12 +194,12 @@ func (r *Runtime) Exec(ctx context.Context, opts runtime.ExecOpts) (*api.ExecRes
 	return result, nil
 }
 
-// Destroy removes the container (if any) and forgets the spark.
-func (r *Runtime) Destroy(ctx context.Context, sparkID string) error {
+// Destroy removes the container (if any) and forgets the cell.
+func (r *Runtime) Destroy(ctx context.Context, cellID string) error {
 	r.mu.Lock()
-	sr, ok := r.sparks[sparkID]
+	sr, ok := r.cells[cellID]
 	if ok {
-		delete(r.sparks, sparkID)
+		delete(r.cells, cellID)
 	}
 	r.mu.Unlock()
 
@@ -214,10 +214,10 @@ func (r *Runtime) Destroy(ctx context.Context, sparkID string) error {
 	return nil
 }
 
-func containerName(sparkID string) string {
+func containerName(cellID string) string {
 	// Docker names: [a-zA-Z0-9][a-zA-Z0-9_.-]
-	safe := strings.ReplaceAll(sparkID, "/", "-")
-	return "spark-" + safe
+	safe := strings.ReplaceAll(cellID, "/", "-")
+	return "cell-" + safe
 }
 
 func limitArgs(limits api.Limits) []string {
@@ -378,9 +378,9 @@ func (s *Stub) Exec(ctx context.Context, opts runtime.ExecOpts) (*api.ExecResult
 }
 
 // Destroy is a no-op.
-func (s *Stub) Destroy(ctx context.Context, sparkID string) error {
+func (s *Stub) Destroy(ctx context.Context, cellID string) error {
 	_ = ctx
-	_ = sparkID
+	_ = cellID
 	return nil
 }
 

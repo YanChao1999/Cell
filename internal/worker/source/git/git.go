@@ -26,14 +26,14 @@ type Provider struct {
 }
 
 // New returns a git Source using reposRoot for bare mirrors
-// (default ~/.spark/repos).
+// (default ~/.cell/repos).
 func New(reposRoot string) (*Provider, error) {
 	if reposRoot == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return nil, err
 		}
-		reposRoot = filepath.Join(home, ".spark", "repos")
+		reposRoot = filepath.Join(home, ".cell", "repos")
 	}
 	if err := os.MkdirAll(reposRoot, 0o755); err != nil {
 		return nil, err

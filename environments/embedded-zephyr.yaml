@@ -2,7 +2,7 @@ name: embedded-zephyr
 description: Zephyr RTOS build environment (placeholder image)
 
 # Placeholder — replace with a pinned Zephyr SDK / west toolchain image.
-image: spark/embedded-zephyr:placeholder
+image: cell/embedded-zephyr:placeholder
 
 cache_mounts:
   - host: zephyr-modules

@@ -1,8 +1,8 @@
-# spark-sdk
+# cell-sdk
 
-Python SDK for [Spark](https://github.com/) — ephemeral isolated environments for AI agents.
+Python SDK for [Cell](https://github.com/YanChao1999/spark) — ephemeral isolated environments for AI agents.
 
-Talks to the local Spark daemon over a Unix socket (`~/.spark/sparkd.sock` by default).
+Talks to the local Cell daemon over a Unix socket (`~/.cell/celld.sock` by default).
 
 ## Install
 
@@ -10,25 +10,25 @@ Talks to the local Spark daemon over a Unix socket (`~/.spark/sparkd.sock` by de
 pip install -e .
 ```
 
-Requires Python ≥ 3.10 and a running `sparkd` daemon.
+Requires Python ≥ 3.10 and a running `celld` daemon.
 
 ## Quick start
 
 ```python
 import asyncio
-from spark import Client
+from cell import Client
 
 async def main() -> None:
     async with Client() as client:
-        spark = await client.create(
+        cell = await client.create(
             repo="https://github.com/example/app",
             ref="main",
             environment="go-1.23",
             ttl="30m",
         )
-        result = await spark.exec("go test ./...")
+        result = await cell.exec("go test ./...")
         print(result.stdout)
-        await spark.destroy()
+        await cell.destroy()
 
 asyncio.run(main())
 ```
@@ -51,9 +51,9 @@ for r in result.results:
 
 | Source | Value |
 |--------|-------|
-| Default | `unix:///home/$USER/.spark/sparkd.sock` |
-| Override | `SPARK_ENDPOINT` env var (`unix:///path` or `http://host:port`) |
+| Default | `unix:///home/$USER/.cell/celld.sock` |
+| Override | `CELL_ENDPOINT` env var (`unix:///path` or `http://host:port`) |
 
 ## Environments
 
-Named environments are YAML templates under `environments/` in the Spark repo (e.g. `go-1.23`, `python-3.12`). Pass the template name as `environment=` when creating a spark.
+Named environments are YAML templates under `environments/` in the Cell repo (e.g. `go-1.23`, `python-3.12`). Pass the template name as `environment=` when creating a cell.

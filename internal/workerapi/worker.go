@@ -9,13 +9,13 @@ import (
 
 // Capacity describes free/total slots on a worker.
 type Capacity struct {
-	MaxSparks  int `json:"max_sparks"`
-	UsedSparks int `json:"used_sparks"`
+	MaxCells  int `json:"max_cells"`
+	UsedCells int `json:"used_cells"`
 }
 
-// Free returns remaining spark slots.
+// Free returns remaining cell slots.
 func (c Capacity) Free() int {
-	free := c.MaxSparks - c.UsedSparks
+	free := c.MaxCells - c.UsedCells
 	if free < 0 {
 		return 0
 	}
@@ -28,8 +28,8 @@ type CacheIndex interface {
 	Keys() []string
 }
 
-// Spark is a running disposable environment on a worker.
-type Spark struct {
+// Cell is a running disposable environment on a worker.
+type Cell struct {
 	ID          string
 	Workspace   string
 	Environment string
@@ -41,7 +41,7 @@ type Worker interface {
 	ID() string
 	Capacity() Capacity
 	CacheIndex() CacheIndex
-	CreateSpark(ctx context.Context, req api.CreateSparkRequest) (*Spark, error)
-	Exec(ctx context.Context, sparkID string, req api.ExecRequest) (*api.ExecResult, error)
-	DestroySpark(ctx context.Context, sparkID string) error
+	CreateCell(ctx context.Context, req api.CreateCellRequest) (*Cell, error)
+	Exec(ctx context.Context, cellID string, req api.ExecRequest) (*api.ExecResult, error)
+	DestroyCell(ctx context.Context, cellID string) error
 }

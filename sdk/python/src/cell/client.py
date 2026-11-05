@@ -1,4 +1,4 @@
-"""Async HTTP client for the Spark daemon Agent API."""
+"""Async HTTP client for the Cell daemon Agent API."""
 
 from __future__ import annotations
 
@@ -9,11 +9,11 @@ from urllib.parse import urlparse
 
 import httpx
 
-from spark.types import ExecResult, Limits, RunResult, SparkInfo
+from cell.types import CellInfo, ExecResult, Limits, RunResult
 
 
 def _default_endpoint() -> str:
-    return f"unix://{Path.home() / '.spark' / 'sparkd.sock'}"
+    return f"unix://{Path.home() / '.cell' / 'celld.sock'}"
 
 
 def _parse_endpoint(endpoint: str) -> tuple[str | None, str]:
@@ -29,20 +29,20 @@ def _parse_endpoint(endpoint: str) -> tuple[str | None, str]:
             path = path[1:]
         if not path.startswith("/"):
             path = "/" + path
-        return path, "http://spark"
+        return path, "http://cell"
     parsed = urlparse(endpoint)
     if parsed.scheme in ("http", "https"):
         return None, endpoint.rstrip("/")
     raise ValueError(
-        f"Unsupported SPARK_ENDPOINT scheme: {endpoint!r}. "
+        f"Unsupported CELL_ENDPOINT scheme: {endpoint!r}. "
         "Use unix:///path/to.sock or http(s)://host:port"
     )
 
 
-class Spark:
-    """Handle for a live Spark environment."""
+class Cell:
+    """Handle for a live Cell environment."""
 
-    def __init__(self, client: Client, info: SparkInfo) -> None:
+    def __init__(self, client: Client, info: CellInfo) -> None:
         self._client = client
         self._info = info
 
@@ -67,7 +67,7 @@ class Spark:
         return self._info.expires_at
 
     @property
-    def info(self) -> SparkInfo:
+    def info(self) -> CellInfo:
         return self._info
 
     async def exec(
@@ -83,22 +83,22 @@ class Spark:
     async def destroy(self) -> None:
         await self._client.destroy(self.id)
 
-    async def refresh(self) -> SparkInfo:
+    async def refresh(self) -> CellInfo:
         self._info = await self._client.get(self.id)
         return self._info
 
     def __repr__(self) -> str:
         return (
-            f"Spark(id={self.id!r}, environment={self.environment!r}, "
+            f"Cell(id={self.id!r}, environment={self.environment!r}, "
             f"status={self.status!r})"
         )
 
 
 class Client:
-    """Async client for the Spark daemon Agent API.
+    """Async client for the Cell daemon Agent API.
 
-    Connects via ``SPARK_ENDPOINT`` or the default Unix socket
-    ``unix://~/.spark/sparkd.sock``.
+    Connects via ``CELL_ENDPOINT`` or the default Unix socket
+    ``unix://~/.cell/celld.sock``.
     """
 
     def __init__(
@@ -108,7 +108,7 @@ class Client:
         timeout: float = 120.0,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
-        endpoint = endpoint or os.environ.get("SPARK_ENDPOINT") or _default_endpoint()
+        endpoint = endpoint or os.environ.get("CELL_ENDPOINT") or _default_endpoint()
         uds, base_url = _parse_endpoint(endpoint)
         self._endpoint = endpoint
         self._base_url = base_url
@@ -181,7 +181,7 @@ class Client:
         prefer_local: bool = True,
         limits: Limits | dict[str, str] | None = None,
         client_worker_id: str | None = None,
-    ) -> Spark:
+    ) -> Cell:
         body: dict[str, Any] = {
             "repo": repo,
             "ref": ref,
@@ -196,13 +196,13 @@ class Client:
         if client_worker_id is not None:
             body["client_worker_id"] = client_worker_id
 
-        data = await self._request("POST", "/v1/sparks", json=body)
-        info = SparkInfo.from_dict(data)
-        return Spark(self, info)
+        data = await self._request("POST", "/v1/cells", json=body)
+        info = CellInfo.from_dict(data)
+        return Cell(self, info)
 
     async def exec(
         self,
-        spark_id: str,
+        cell_id: str,
         command: str,
         *,
         timeout_seconds: int | None = None,
@@ -210,25 +210,25 @@ class Client:
         body: dict[str, Any] = {"command": command}
         if timeout_seconds is not None:
             body["timeout_seconds"] = timeout_seconds
-        data = await self._request("POST", f"/v1/sparks/{spark_id}/exec", json=body)
+        data = await self._request("POST", f"/v1/cells/{cell_id}/exec", json=body)
         return ExecResult.from_dict(data)
 
-    async def destroy(self, spark_id: str) -> None:
-        await self._request("DELETE", f"/v1/sparks/{spark_id}")
+    async def destroy(self, cell_id: str) -> None:
+        await self._request("DELETE", f"/v1/cells/{cell_id}")
 
-    async def get(self, spark_id: str) -> SparkInfo:
-        data = await self._request("GET", f"/v1/sparks/{spark_id}")
-        return SparkInfo.from_dict(data)
+    async def get(self, cell_id: str) -> CellInfo:
+        data = await self._request("GET", f"/v1/cells/{cell_id}")
+        return CellInfo.from_dict(data)
 
-    async def list(self) -> list[SparkInfo]:
-        data = await self._request("GET", "/v1/sparks")
+    async def list(self) -> list[CellInfo]:
+        data = await self._request("GET", "/v1/cells")
         if isinstance(data, list):
             items = data
         elif isinstance(data, dict):
-            items = data.get("sparks") or data.get("items") or []
+            items = data.get("cells") or data.get("items") or []
         else:
             items = []
-        return [SparkInfo.from_dict(item) for item in items]
+        return [CellInfo.from_dict(item) for item in items]
 
     async def run(
         self,

@@ -1,15 +1,15 @@
-"""Spark Python SDK — ephemeral isolated environments for AI agents."""
+"""Cell Python SDK — ephemeral isolated environments for AI agents."""
 
-from spark.client import Client, Spark
-from spark.types import ExecResult, Limits, RunResult, SparkInfo
+from cell.client import Cell, Client
+from cell.types import CellInfo, ExecResult, Limits, RunResult
 
 __all__ = [
     "Client",
-    "Spark",
+    "Cell",
     "ExecResult",
     "Limits",
     "RunResult",
-    "SparkInfo",
+    "CellInfo",
 ]
 
 __version__ = "0.1.0"

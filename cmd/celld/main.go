@@ -1,4 +1,4 @@
-// Command sparkd is the Spark control plane / local worker daemon.
+// Command celld is the Cell control plane / local worker daemon.
 package main
 
 import (
@@ -35,7 +35,7 @@ func main() {
 			log.Fatal(err)
 		}
 	case "version", "-version", "--version":
-		fmt.Println("sparkd 0.3.0-phase3")
+		fmt.Println("celld 0.3.0-phase3")
 	case "help", "-h", "--help":
 		usage()
 	default:
@@ -46,19 +46,19 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintf(os.Stderr, `sparkd — Spark control plane / worker daemon
+	fmt.Fprintf(os.Stderr, `celld — Cell control plane / worker daemon
 
 Usage:
-  sparkd serve --mode=all --socket ~/.spark/sparkd.sock
+  celld serve --mode=all --socket ~/.cell/celld.sock
 
 Flags (serve):
   --mode            all | control | worker (MVP: all)
-  --socket          unix socket (default ~/.spark/sparkd.sock)
-  --spark-home      base dir (default ~/.spark); sets defaults for other paths
-  --state-dir       meta state dir (default <spark-home>/state)
-  --workspaces      workspace root (default <spark-home>/workspaces)
-  --repos           bare git mirrors (default <spark-home>/repos)
-  --cache-dir       package caches (default <spark-home>/cache)
+  --socket          unix socket (default ~/.cell/celld.sock)
+  --cell-home       base dir (default ~/.cell); sets defaults for other paths
+  --state-dir       meta state dir (default <cell-home>/state)
+  --workspaces      workspace root (default <cell-home>/workspaces)
+  --repos           bare git mirrors (default <cell-home>/repos)
+  --cache-dir       package caches (default <cell-home>/cache)
   --environments    env template YAML dir (default ./environments)
   --worker-id       local worker id (default local)
 
@@ -71,12 +71,12 @@ Commands:
 func runServe(args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	mode := fs.String("mode", "all", "mode: all | control | worker")
-	socket := fs.String("socket", "", "unix socket path (default <spark-home>/sparkd.sock)")
-	sparkHomeFlag := fs.String("spark-home", "", "spark home directory (default ~/.spark)")
-	stateDir := fs.String("state-dir", "", "meta state dir (default <spark-home>/state)")
-	workspaces := fs.String("workspaces", "", "workspace root (default <spark-home>/workspaces)")
-	repos := fs.String("repos", "", "bare git mirror root (default <spark-home>/repos)")
-	cacheDir := fs.String("cache-dir", "", "cache root (default <spark-home>/cache)")
+	socket := fs.String("socket", "", "unix socket path (default <cell-home>/celld.sock)")
+	cellHomeFlag := fs.String("cell-home", "", "cell home directory (default ~/.cell)")
+	stateDir := fs.String("state-dir", "", "meta state dir (default <cell-home>/state)")
+	workspaces := fs.String("workspaces", "", "workspace root (default <cell-home>/workspaces)")
+	repos := fs.String("repos", "", "bare git mirror root (default <cell-home>/repos)")
+	cacheDir := fs.String("cache-dir", "", "cache root (default <cell-home>/cache)")
 	environments := fs.String("environments", "", "environment templates dir (default ./environments)")
 	workerID := fs.String("worker-id", "local", "local worker id")
 	if err := fs.Parse(args); err != nil {
@@ -87,24 +87,24 @@ func runServe(args []string) error {
 	if err != nil {
 		return err
 	}
-	sparkHome := *sparkHomeFlag
-	if sparkHome == "" {
-		sparkHome = filepath.Join(home, ".spark")
+	cellHome := *cellHomeFlag
+	if cellHome == "" {
+		cellHome = filepath.Join(home, ".cell")
 	}
 	if *socket == "" {
-		*socket = filepath.Join(sparkHome, "sparkd.sock")
+		*socket = filepath.Join(cellHome, "celld.sock")
 	}
 	if *stateDir == "" {
-		*stateDir = filepath.Join(sparkHome, "state")
+		*stateDir = filepath.Join(cellHome, "state")
 	}
 	if *workspaces == "" {
-		*workspaces = filepath.Join(sparkHome, "workspaces")
+		*workspaces = filepath.Join(cellHome, "workspaces")
 	}
 	if *repos == "" {
-		*repos = filepath.Join(sparkHome, "repos")
+		*repos = filepath.Join(cellHome, "repos")
 	}
 	if *cacheDir == "" {
-		*cacheDir = filepath.Join(sparkHome, "cache")
+		*cacheDir = filepath.Join(cellHome, "cache")
 	}
 	if *environments == "" {
 		*environments = "environments"
@@ -135,7 +135,7 @@ func runServe(args []string) error {
 	if err := cacheLayout.Ensure(); err != nil {
 		return fmt.Errorf("cache: %w", err)
 	}
-	log.Printf("sparkd: environments=%s repos=%s cache=%s", envAbs, *repos, *cacheDir)
+	log.Printf("celld: environments=%s repos=%s cache=%s", envAbs, *repos, *cacheDir)
 
 	lw, err := manager.New(manager.Options{
 		ID:             *workerID,
@@ -156,7 +156,7 @@ func runServe(args []string) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	rp := reaper.New(store, sched, srv.DestroySpark, 15*time.Second)
+	rp := reaper.New(store, sched, srv.DestroyCell, 15*time.Second)
 	go rp.Run(ctx)
 
 	errCh := make(chan error, 1)
@@ -167,7 +167,7 @@ func runServe(args []string) error {
 	select {
 	case <-ctx.Done():
 		_ = os.Remove(*socket)
-		log.Println("sparkd shutting down")
+		log.Println("celld shutting down")
 		return nil
 	case err := <-errCh:
 		return err
