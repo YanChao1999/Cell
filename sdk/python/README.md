@@ -1,6 +1,6 @@
 # cell-sdk
 
-Python SDK for [Cell](https://github.com/YanChao1999/spark) — ephemeral isolated environments for AI agents.
+Python SDK for [Cell](https://github.com/YanChao1999/Cell) — ephemeral isolated environments for AI agents.
 
 Talks to the local Cell daemon over a Unix socket (`~/.cell/celld.sock` by default).
 

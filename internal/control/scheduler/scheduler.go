@@ -4,8 +4,8 @@ package scheduler
 import (
 	"fmt"
 
-	"github.com/YanChao1999/spark/api"
-	"github.com/YanChao1999/spark/internal/workerapi"
+	"github.com/YanChao1999/Cell/api"
+	"github.com/YanChao1999/Cell/internal/workerapi"
 )
 
 // Scheduler selects a worker for CreateCell placement.

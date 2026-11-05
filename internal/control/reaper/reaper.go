@@ -6,8 +6,8 @@ import (
 	"log"
 	"time"
 
-	"github.com/YanChao1999/spark/internal/control/meta"
-	"github.com/YanChao1999/spark/internal/control/scheduler"
+	"github.com/YanChao1999/Cell/internal/control/meta"
+	"github.com/YanChao1999/Cell/internal/control/scheduler"
 )
 
 // Reaper periodically checks meta for expired Cells and destroys them.

@@ -11,12 +11,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/YanChao1999/spark/api"
-	"github.com/YanChao1999/spark/internal/worker/cache"
-	"github.com/YanChao1999/spark/internal/worker/envtemplate"
-	"github.com/YanChao1999/spark/internal/worker/runtime"
-	"github.com/YanChao1999/spark/internal/worker/source/git"
-	"github.com/YanChao1999/spark/internal/workerapi"
+	"github.com/YanChao1999/Cell/api"
+	"github.com/YanChao1999/Cell/internal/worker/cache"
+	"github.com/YanChao1999/Cell/internal/worker/envtemplate"
+	"github.com/YanChao1999/Cell/internal/worker/runtime"
+	"github.com/YanChao1999/Cell/internal/worker/source/git"
+	"github.com/YanChao1999/Cell/internal/workerapi"
 )
 
 // LocalWorker manages Cells on the local machine.

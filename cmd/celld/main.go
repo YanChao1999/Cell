@@ -12,16 +12,16 @@ import (
 	"syscall"
 	"time"
 
-	ctrlapi "github.com/YanChao1999/spark/internal/control/api"
-	"github.com/YanChao1999/spark/internal/control/meta"
-	"github.com/YanChao1999/spark/internal/control/reaper"
-	"github.com/YanChao1999/spark/internal/control/scheduler"
-	"github.com/YanChao1999/spark/internal/worker/cache"
-	"github.com/YanChao1999/spark/internal/worker/envtemplate"
-	"github.com/YanChao1999/spark/internal/worker/manager"
-	"github.com/YanChao1999/spark/internal/worker/runtime/docker"
-	"github.com/YanChao1999/spark/internal/worker/source/git"
-	"github.com/YanChao1999/spark/internal/workerapi"
+	ctrlapi "github.com/YanChao1999/Cell/internal/control/api"
+	"github.com/YanChao1999/Cell/internal/control/meta"
+	"github.com/YanChao1999/Cell/internal/control/reaper"
+	"github.com/YanChao1999/Cell/internal/control/scheduler"
+	"github.com/YanChao1999/Cell/internal/worker/cache"
+	"github.com/YanChao1999/Cell/internal/worker/envtemplate"
+	"github.com/YanChao1999/Cell/internal/worker/manager"
+	"github.com/YanChao1999/Cell/internal/worker/runtime/docker"
+	"github.com/YanChao1999/Cell/internal/worker/source/git"
+	"github.com/YanChao1999/Cell/internal/workerapi"
 )
 
 func main() {

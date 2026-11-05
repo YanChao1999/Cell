@@ -14,9 +14,9 @@ import (
 	"strings"
 	"time"
 
-	cellapi "github.com/YanChao1999/spark/api"
-	"github.com/YanChao1999/spark/internal/control/meta"
-	"github.com/YanChao1999/spark/internal/control/scheduler"
+	cellapi "github.com/YanChao1999/Cell/api"
+	"github.com/YanChao1999/Cell/internal/control/meta"
+	"github.com/YanChao1999/Cell/internal/control/scheduler"
 )
 
 const defaultTTL = 30 * time.Minute

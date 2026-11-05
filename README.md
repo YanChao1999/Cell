@@ -18,7 +18,7 @@ A **Cell** is a disposable execution workspace: checkout code, install deps, bui
 - **Sticky Exec** — meta maps `cell_id → worker_id`
 - **Disposable Cells**, durable caches / mirrors
 
-Go module path remains `github.com/YanChao1999/spark` until the GitHub repository is renamed.
+Module and repository: `github.com/YanChao1999/Cell`.
 
 ## Build
 
@@ -146,4 +146,4 @@ Config: `.golangci.yml`.
 
 ## Module
 
-`github.com/YanChao1999/spark` (repository name pending rename to match **Cell**)
+`github.com/YanChao1999/Cell`
