@@ -20,6 +20,8 @@ A **Cell** is a disposable execution workspace: checkout code, install deps, bui
 
 Module and repository: `github.com/YanChao1999/Cell`.
 
+Component, class, and sequence diagrams are in [ARCHITECTURE.md](ARCHITECTURE.md).
+
 ## Build
 
 ```bash
@@ -147,3 +149,7 @@ Config: `.golangci.yml`.
 ## Module
 
 `github.com/YanChao1999/Cell`
+
+## Tech debt
+
+Known gaps from review, including Docker isolation, restart reconciliation, and client timeouts, are tracked in [TECH_DEBT.md](TECH_DEBT.md). They are open.
