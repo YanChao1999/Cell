@@ -1,0 +1,79 @@
+package envtemplate
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+func TestParseGoTemplate(t *testing.T) {
+	data := []byte(`name: go-1.23
+description: Go 1.23 on Debian Bookworm with module/build caches
+
+image: golang:1.23-bookworm
+
+cache_mounts:
+  - host: go-mod
+    container: /go/pkg/mod
+  - host: go-build
+    container: /root/.cache/go-build
+
+setup:
+  - go version
+
+env:
+  GO111MODULE: "on"
+  CGO_ENABLED: "0"
+  GOMODCACHE: /go/pkg/mod
+  GOCACHE: /root/.cache/go-build
+
+default_limits:
+  cpu: "2"
+  memory: 4Gi
+  disk: 10Gi
+
+default_exec_timeout: 30m
+
+# network: default  # optional; omit to use daemon default
+`)
+	tmpl, err := Parse(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tmpl.Name != "go-1.23" || tmpl.Image != "golang:1.23-bookworm" {
+		t.Fatalf("unexpected name/image: %+v", tmpl)
+	}
+	if tmpl.DefaultLimits.CPU != "2" || tmpl.DefaultLimits.Memory != "4Gi" {
+		t.Fatalf("limits: %+v", tmpl.DefaultLimits)
+	}
+	if tmpl.Env["GO111MODULE"] != "on" || tmpl.Env["CGO_ENABLED"] != "0" {
+		t.Fatalf("env: %+v", tmpl.Env)
+	}
+	if tmpl.Env["GOMODCACHE"] != "/go/pkg/mod" || tmpl.Env["GOCACHE"] != "/root/.cache/go-build" {
+		t.Fatalf("cache env: %+v", tmpl.Env)
+	}
+	if len(tmpl.CacheMounts) != 2 || tmpl.CacheMounts[0].Host != "go-mod" {
+		t.Fatalf("cache_mounts: %+v", tmpl.CacheMounts)
+	}
+	if len(tmpl.Setup) != 1 || tmpl.Setup[0] != "go version" {
+		t.Fatalf("setup: %+v", tmpl.Setup)
+	}
+	if tmpl.DefaultExecTimeout != "30m" {
+		t.Fatalf("default_exec_timeout: %q", tmpl.DefaultExecTimeout)
+	}
+}
+
+func TestLoadFromDir(t *testing.T) {
+	root := filepath.Join("..", "..", "..", "environments")
+	if _, err := os.Stat(filepath.Join(root, "go-1.23.yaml")); err != nil {
+		t.Skip("environments/go-1.23.yaml not found:", err)
+	}
+	l := New(root)
+	tmpl, err := l.Load("go-1.23")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tmpl.Image == "" {
+		t.Fatal("expected image")
+	}
+}

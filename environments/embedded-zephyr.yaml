@@ -1,0 +1,30 @@
+name: embedded-zephyr
+description: Zephyr RTOS build environment (placeholder image)
+
+# Placeholder — replace with a pinned Zephyr SDK / west toolchain image.
+image: cell/embedded-zephyr:placeholder
+
+cache_mounts:
+  - host: zephyr-modules
+    container: /opt/zephyr/modules
+  - host: west-cache
+    container: /root/.cache/zephyr
+
+setup:
+  - echo "TODO: install west + Zephyr SDK"
+  # - west --version
+
+env:
+  ZEPHYR_BASE: /opt/zephyr
+  ZEPHYR_TOOLCHAIN_VARIANT: zephyr
+
+default_limits:
+  cpu: "4"
+  memory: 8Gi
+  disk: 20Gi
+
+# Embedded builds are long-running; agents should still pass timeout_seconds for
+# very large images. This is the default when exec omits timeout_seconds.
+default_exec_timeout: 2h
+
+network: none

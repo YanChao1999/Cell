@@ -1,0 +1,8 @@
+/bin/
+/.spark-smoke/
+*.sock
+*.test
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/

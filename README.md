@@ -1,0 +1,155 @@
+# Cell
+
+Ephemeral isolated environments for AI coding agents.
+
+> Formerly sketched as “Spark”; renamed to **Cell** to avoid collision with Apache Spark.
+
+A **Cell** is a disposable execution workspace: checkout code, install deps, build/test, return outputs, then destroy — while reusable caches survive.
+
+## Architecture
+
+- **Control plane** — HTTP Agent API, scheduler, meta store, TTL reaper
+- **Workers** — create / exec / destroy Cells; clients may also be workers
+- **Source** — `git clone --mirror` under `~/.cell/repos/<hash>`, then `git worktree add` into the workspace
+- **Runtime** — Docker (`docker run -d` + `docker exec` + `docker rm -f`) or host fallback
+- **Caches** — host dirs under `--cache-dir` (default `~/.cell/cache`); Docker bind-mounts via env template `cache_mounts`; host fallback sets `GOMODCACHE` / `GOCACHE` / `PIP_CACHE_DIR` / `CCACHE_DIR` / …
+- **Environments** — YAML under `environments/` (image, limits, `cache_mounts`, optional `default_exec_timeout`)
+- **Placement** — `prefer_local` → warm `cache_hints` → free capacity
+- **Sticky Exec** — meta maps `cell_id → worker_id`
+- **Disposable Cells**, durable caches / mirrors
+
+Module and repository: `github.com/YanChao1999/Cell`.
+
+Component, class, and sequence diagrams are in [ARCHITECTURE.md](ARCHITECTURE.md).
+
+## Build
+
+```bash
+export PATH=$HOME/.local/bin:$HOME/.local/go/bin:/usr/local/go/bin:$PATH
+go build -o bin/celld ./cmd/celld
+go build -o bin/cell ./cmd/cell
+go test ./internal/worker/cache/ ./internal/worker/envtemplate/
+```
+
+## Run (`mode=all`)
+
+```bash
+./bin/celld serve --mode=all \
+  --cell-home ~/.cell \
+  --environments ./environments \
+  --cache-dir ~/.cell/cache \
+  --socket ~/.cell/celld.sock
+```
+
+| Flag | Default |
+|------|---------|
+| `--cell-home` | `~/.cell` |
+| `--repos` | `<cell-home>/repos` |
+| `--workspaces` | `<cell-home>/workspaces` |
+| `--cache-dir` | `<cell-home>/cache` |
+| `--state-dir` | `<cell-home>/state` |
+| `--environments` | `./environments` |
+| `--socket` | `<cell-home>/celld.sock` |
+
+Without a Docker daemon, celld logs a host-fallback line and create/exec/destroy still work; cache env vars point tools at `--cache-dir` subdirs.
+
+## Caches
+
+On start, celld ensures well-known dirs under `--cache-dir`:
+
+`go-mod`, `go-build`, `pip-cache`, `python-venv`, `zephyr-modules`, `west-cache`, `yocto-downloads`, `yocto-sstate`, `ccache`
+
+Env templates declare mounts, e.g. `go-1.23.yaml`:
+
+```yaml
+cache_mounts:
+  - host: go-mod
+    container: /go/pkg/mod
+  - host: go-build
+    container: /root/.cache/go-build
+```
+
+Warm path: first Cell populates e.g. `~/.cell/cache/go-mod`; a later Cell with the same environment reuses the same bind/env.
+
+## TTL reaper
+
+Default Cell TTL is **30m** (override with create `ttl`, e.g. `"1h"`). The reaper ticks on start and every 15s, destroying expired Cells on their sticky worker and clearing meta.
+
+Embedded templates set a longer optional `default_exec_timeout` (Zephyr `2h`, embedded-linux `4h`) used when `exec` omits `timeout_seconds`.
+
+## Agent HTTP API (Unix socket)
+
+| Method | Path | Notes |
+|--------|------|--------|
+| GET | `/health` | liveness |
+| POST | `/v1/cells` | create (`repo`, `ref`, `environment`, `ttl`, `prefer_local`, `limits`, `client_worker_id`) |
+| GET | `/v1/cells` | list |
+| GET | `/v1/cells/{id}` | get |
+| POST | `/v1/cells/{id}/exec` | `{ "command", "timeout_seconds" }` → `exit_code`, `stdout`, `stderr` |
+| DELETE | `/v1/cells/{id}` | destroy |
+| POST | `/v1/run` | create → exec commands sequentially → destroy |
+
+```bash
+curl --unix-socket ~/.cell/celld.sock http://localhost/health
+curl --unix-socket ~/.cell/celld.sock -X POST http://localhost/v1/cells \
+  -H 'Content-Type: application/json' \
+  -d '{"environment":"go-1.23","ttl":"30m"}'
+curl --unix-socket ~/.cell/celld.sock -X POST http://localhost/v1/run \
+  -H 'Content-Type: application/json' \
+  -d '{"environment":"go-1.23","commands":["go version"]}'
+```
+
+## Python SDK (primary agent client)
+
+```bash
+uv venv .venv && uv pip install --python .venv/bin/python -e sdk/python
+```
+
+```python
+from cell import Client
+
+async with Client() as client:
+    c = await client.create(environment="go-1.23", ttl="30m")
+    result = await c.exec("go test ./...")
+    await c.destroy()
+    await client.run(environment="go-1.23", commands=["go version"])
+```
+
+`repo` is optional (empty = blank workspace). Endpoint: `CELL_ENDPOINT` or default `unix://~/.cell/celld.sock`. See `sdk/python/README.md`.
+
+## Ops CLI
+
+```bash
+./bin/cell health
+./bin/cell list
+./bin/cell run --env go-1.23 'echo hello'
+./bin/cell destroy <id>
+```
+
+Socket override: `CELL_SOCKET`.
+
+## Smoke
+
+```bash
+./scripts/smoke.sh
+```
+
+## CI
+
+GitHub Actions (`.github/workflows/ci.yml`) on push/PR to `main`:
+
+| Job | Checks |
+| --- | --- |
+| Go | `go build` + `golangci-lint` (`gofmt`, `govet`, `staticcheck`, `dupl`, …) |
+| API smoke | `scripts/smoke.sh` (host fallback; no Docker required) |
+| Python | `compileall` on `sdk/python` |
+
+Config: `.golangci.yml`.
+
+## Module
+
+`github.com/YanChao1999/Cell`
+
+## Tech debt
+
+Known gaps from review, including Docker isolation, restart reconciliation, and client timeouts, are tracked in [TECH_DEBT.md](TECH_DEBT.md). They are open.

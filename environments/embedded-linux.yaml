@@ -1,0 +1,32 @@
+name: embedded-linux
+description: Embedded Linux / Yocto-style build environment (placeholder image)
+
+# Placeholder — replace with a pinned Yocto/OE or Buildroot toolchain image.
+image: cell/embedded-linux:placeholder
+
+cache_mounts:
+  - host: yocto-downloads
+    container: /opt/yocto/downloads
+  - host: yocto-sstate
+    container: /opt/yocto/sstate-cache
+  - host: ccache
+    container: /root/.ccache
+
+setup:
+  - echo "TODO: source oe-init-build-env / install Buildroot deps"
+
+env:
+  BB_ENV_PASSTHROUGH_ADDITIONS: ""
+  CCACHE_DIR: /root/.ccache
+  DL_DIR: /opt/yocto/downloads
+  SSTATE_DIR: /opt/yocto/sstate-cache
+
+default_limits:
+  cpu: "4"
+  memory: 16Gi
+  disk: 50Gi
+
+# Yocto/OE builds routinely exceed 30m; default exec timeout is longer.
+default_exec_timeout: 4h
+
+network: none

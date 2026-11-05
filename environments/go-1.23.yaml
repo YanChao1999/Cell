@@ -1,0 +1,28 @@
+name: go-1.23
+description: Go 1.23 on Debian Bookworm with module/build caches
+
+image: golang:1.23-bookworm
+
+cache_mounts:
+  - host: go-mod
+    container: /go/pkg/mod
+  - host: go-build
+    container: /root/.cache/go-build
+
+setup:
+  - go version
+
+env:
+  GO111MODULE: "on"
+  CGO_ENABLED: "0"
+  GOMODCACHE: /go/pkg/mod
+  GOCACHE: /root/.cache/go-build
+
+default_limits:
+  cpu: "2"
+  memory: 4Gi
+  disk: 10Gi
+
+default_exec_timeout: 30m
+
+# network: default  # optional; omit to use daemon default

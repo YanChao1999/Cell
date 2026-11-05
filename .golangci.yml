@@ -1,0 +1,22 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  enable:
+    - staticcheck
+    - govet
+    - ineffassign
+    - unused
+    - dupl
+    - misspell
+  settings:
+    dupl:
+      threshold: 50
+  exclusions:
+    generated: lax
+
+formatters:
+  enable:
+    - gofmt

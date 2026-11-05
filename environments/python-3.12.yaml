@@ -1,0 +1,26 @@
+name: python-3.12
+description: Python 3.12 on Debian Bookworm with pip/cache mounts
+
+image: python:3.12-bookworm
+
+cache_mounts:
+  - host: pip-cache
+    container: /root/.cache/pip
+  - host: python-venv
+    container: /opt/cell/venv
+
+setup:
+  - python --version
+  - pip install --upgrade pip
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PYTHONDONTWRITEBYTECODE: "1"
+  PIP_CACHE_DIR: /root/.cache/pip
+
+default_limits:
+  cpu: "2"
+  memory: 4Gi
+  disk: 10Gi
+
+default_exec_timeout: 30m
