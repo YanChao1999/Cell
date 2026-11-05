@@ -129,6 +129,18 @@ async with Client() as client:
 ./scripts/smoke.sh
 ```
 
+## CI
+
+GitHub Actions (`.github/workflows/ci.yml`) on push/PR to `main`:
+
+| Job | Checks |
+| --- | --- |
+| Go | `go build` + `golangci-lint` (`gofmt`, `govet`, `staticcheck`, `dupl`, …) |
+| API smoke | `scripts/smoke.sh` (host fallback; no Docker required) |
+| Python | `compileall` on `sdk/python` |
+
+Config: `.golangci.yml`. Unit coverage is not a CI gate yet; prefer build + static analysis + API smoke.
+
 ## Module
 
 `github.com/YanChao1999/spark`

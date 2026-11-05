@@ -24,10 +24,10 @@ type Record struct {
 
 // Store is an in-memory meta store with optional JSON persistence.
 type Store struct {
-	mu    sync.RWMutex
-	byID  map[string]*Record
-	dir   string // empty = memory only
-	path  string
+	mu   sync.RWMutex
+	byID map[string]*Record
+	dir  string // empty = memory only
+	path string
 }
 
 // New creates a Store. If stateDir is non-empty, records are persisted to

@@ -4,22 +4,32 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 export PATH="${HOME}/.local/go/bin:/usr/local/go/bin:${PATH}"
 SOCKET="${SPARK_SOCKET:-${HOME}/.spark/sparkd.sock}"
-mkdir -p "${HOME}/.spark"
+SPARK_HOME="${SPARK_HOME:-${HOME}/.spark}"
+CACHE_DIR="${SPARK_CACHE_DIR:-${SPARK_HOME}/cache}"
+LOG_FILE="${SPARK_SMOKE_LOG:-/tmp/sparkd-smoke.log}"
+mkdir -p "$SPARK_HOME" "$(dirname "$SOCKET")"
 
 cd "$ROOT"
 go build -o bin/sparkd ./cmd/sparkd
 go build -o bin/spark ./cmd/spark
 
-pkill -f 'bin/sparkd serve' 2>/dev/null || true
-rm -f "$SOCKET"
+# Prefer killing only our eventual PID; avoid broad pkill in CI.
+if [ -S "$SOCKET" ]; then
+  rm -f "$SOCKET"
+fi
 ./bin/sparkd serve --mode=all \
   --socket "$SOCKET" \
   --environments ./environments \
-  --cache-dir "${HOME}/.spark/cache" \
-  > /tmp/sparkd-smoke.log 2>&1 &
+  --cache-dir "$CACHE_DIR" \
+  > "$LOG_FILE" 2>&1 &
 PID=$!
-trap 'kill $PID 2>/dev/null || true' EXIT
-sleep 0.5
+trap 'kill $PID 2>/dev/null || true; wait $PID 2>/dev/null || true' EXIT
+for _ in $(seq 1 50); do
+  if curl -sf --unix-socket "$SOCKET" http://localhost/health >/dev/null 2>&1; then
+    break
+  fi
+  sleep 0.1
+done
 
 curl -sf --unix-socket "$SOCKET" http://localhost/health | grep -q ok
 echo "OK health"
@@ -41,10 +51,12 @@ RUN=$(curl -sf --unix-socket "$SOCKET" -X POST http://localhost/v1/run \
 printf '%s' "$RUN" | grep -q run-ok
 echo "OK /v1/run"
 
+export SPARK_SOCKET="$SOCKET"
 ./bin/spark health >/dev/null
 ./bin/spark run --env go-1.23 'echo cli-run' | grep -q cli-run
 echo "OK spark CLI"
 
+# Lightweight package checks only (not a full unit suite).
 go test ./internal/worker/cache/ ./internal/worker/envtemplate/
-echo "OK unit tests"
+echo "OK package checks"
 echo "smoke passed"

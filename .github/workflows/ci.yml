@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main, cursor/**]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go:
+    name: Go build & static analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build
+        run: |
+          go build -o bin/sparkd ./cmd/sparkd
+          go build -o bin/spark ./cmd/spark
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.1.6
+          args: --timeout=5m
+
+  smoke:
+    name: API smoke
+    runs-on: ubuntu-latest
+    needs: go
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: API smoke (host fallback)
+        env:
+          SPARK_SOCKET: /tmp/sparkd-ci.sock
+          SPARK_SMOKE_LOG: /tmp/sparkd-ci.log
+          HOME: ${{ runner.temp }}
+        run: |
+          chmod +x scripts/smoke.sh
+          mkdir -p "$HOME/.spark"
+          ./scripts/smoke.sh
+
+  python:
+    name: Python SDK syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compile SDK
+        run: python -m compileall -q sdk/python/src

@@ -12,13 +12,13 @@ type Limits struct {
 
 // CreateSparkRequest is the body for POST /v1/sparks.
 type CreateSparkRequest struct {
-	Repo           string `json:"repo,omitempty"`
-	Ref            string `json:"ref,omitempty"`
-	Environment    string `json:"environment,omitempty"`
-	TTL            string `json:"ttl,omitempty"` // e.g. "30m", "1h"
-	PreferLocal    bool   `json:"prefer_local,omitempty"`
-	Limits         Limits `json:"limits,omitempty"`
-	ClientWorkerID string `json:"client_worker_id,omitempty"`
+	Repo           string   `json:"repo,omitempty"`
+	Ref            string   `json:"ref,omitempty"`
+	Environment    string   `json:"environment,omitempty"`
+	TTL            string   `json:"ttl,omitempty"` // e.g. "30m", "1h"
+	PreferLocal    bool     `json:"prefer_local,omitempty"`
+	Limits         Limits   `json:"limits,omitempty"`
+	ClientWorkerID string   `json:"client_worker_id,omitempty"`
 	CacheHints     []string `json:"cache_hints,omitempty"`
 }
 
