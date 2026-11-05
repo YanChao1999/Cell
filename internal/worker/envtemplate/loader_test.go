@@ -34,7 +34,7 @@ default_limits:
 
 default_exec_timeout: 30m
 
-# network: default  # optional; omit to use daemon default
+network: default
 `)
 	tmpl, err := Parse(data)
 	if err != nil {
@@ -60,6 +60,30 @@ default_exec_timeout: 30m
 	}
 	if tmpl.DefaultExecTimeout != "30m" {
 		t.Fatalf("default_exec_timeout: %q", tmpl.DefaultExecTimeout)
+	}
+	if tmpl.Network != "default" {
+		t.Fatalf("network: %q", tmpl.Network)
+	}
+}
+
+func TestParseEgressAllowlist(t *testing.T) {
+	data := []byte(`name: agent-net
+image: golang:1.23-bookworm
+network: allowlist
+egress:
+  allow:
+    - proxy.golang.org
+    - github.com
+`)
+	tmpl, err := Parse(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tmpl.Network != "allowlist" {
+		t.Fatalf("network: %q", tmpl.Network)
+	}
+	if len(tmpl.EgressAllow) != 2 || tmpl.EgressAllow[0] != "proxy.golang.org" || tmpl.EgressAllow[1] != "github.com" {
+		t.Fatalf("egress.allow: %+v", tmpl.EgressAllow)
 	}
 }
 

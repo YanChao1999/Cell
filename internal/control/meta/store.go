@@ -92,9 +92,18 @@ func (s *Store) persistLocked() error {
 func (s *Store) Put(r *Record) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	prev, had := s.byID[r.ID]
 	cp := *r
 	s.byID[r.ID] = &cp
-	return s.persistLocked()
+	if err := s.persistLocked(); err != nil {
+		if had {
+			s.byID[r.ID] = prev
+		} else {
+			delete(s.byID, r.ID)
+		}
+		return err
+	}
+	return nil
 }
 
 // Get returns a record by cell id.
@@ -113,7 +122,24 @@ func (s *Store) Get(id string) (*Record, bool) {
 func (s *Store) Delete(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	prev, had := s.byID[id]
+	if !had {
+		return nil
+	}
 	delete(s.byID, id)
+	if err := s.persistLocked(); err != nil {
+		s.byID[id] = prev
+		return err
+	}
+	return nil
+}
+
+// Reset clears all records and persists an empty store. Used on startup when
+// in-memory worker/runtime state cannot be restored securely.
+func (s *Store) Reset() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.byID = make(map[string]*Record)
 	return s.persistLocked()
 }
 

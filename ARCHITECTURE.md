@@ -10,6 +10,37 @@ Local MVP is one `celld` process: control plane plus one in-process `LocalWorker
 
 `--mode=control` and `--mode=worker` are reserved. Remote `Register` / `Heartbeat`, cross-node cache pull, auth, snapshot/restore, interactive TTY, and a microVM `Runtime` are later. The same `Worker` and `Runtime` interfaces are the plug-in points.
 
+## Network / egress policy (security-first)
+
+Environment templates declare an egress policy. This is not “always offline”.
+
+| Policy | Behavior | Used for |
+| --- | --- | --- |
+| `default` / `open` | Normal Docker outbound | Agent Cells (`go-1.23`, `python-3.12`) that need modules, docs, APIs |
+| `none` | `docker run --network none` | Air-gapped embedded builds (`embedded-zephyr`, `embedded-linux`) |
+| `allowlist` | **Refused until implemented** | Future: no direct egress; HTTP(S) only via a Cell egress proxy that enforces `egress.allow` hostnames |
+
+Schema already accepted in templates:
+
+```yaml
+network: allowlist
+egress:
+  allow:
+    - proxy.golang.org
+    - github.com
+```
+
+Until the proxy exists, create with `network: allowlist` fails closed (never silently opens the network). Host fallback rejects `none` and `allowlist` because it cannot enforce them. When Docker is enabled, missing images and missing runtime entries never fall back to the host.
+
+## Security in design (not bolt-on)
+
+Cell is an isolation product. Controls belong in the daemon and `Runtime` implementation:
+
+- Fail closed on unfinished or unenforceable policy (allowlist, host+`none`, Docker+empty image).
+- No host escape when Docker is the selected backend; no docker.sock; no privileged / host-namespace shortcuts.
+- Docker today is a **baseline** container boundary (verified: not privileged, binds under cell home only). It is not yet a hardened sandbox — non-root, `no-new-privileges`, explicit cap-drop, read-only rootfs, and shared-cache trust are tracked debt in [TECH_DEBT.md](TECH_DEBT.md).
+- Stronger isolation later is another `Runtime` (microVM), not an SDK change. Design APIs so security policy (`network`, limits, future egress allow) stays declarative in templates and is enforced in software on the worker.
+
 Placement order, already in `scheduler.Place`:
 
 1. `prefer_local` (request `client_worker_id`, else the configured local worker)
@@ -210,4 +241,4 @@ sequenceDiagram
 
 ## Open follow-ups
 
-Review findings that are accepted and not fixed are in [TECH_DEBT.md](TECH_DEBT.md). Phase 5 is still the cluster: worker register and heartbeat, `prefer_local` across peers, and optional cross-node cache pull.
+Accepted debt (including Docker sandbox hardening and egress allowlist proxy) is in [TECH_DEBT.md](TECH_DEBT.md). Security stays in design and in the runtime software path. Phase 5 is still the cluster: worker register and heartbeat, `prefer_local` across peers, and optional cross-node cache pull.

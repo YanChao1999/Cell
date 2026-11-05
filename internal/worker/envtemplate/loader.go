@@ -25,8 +25,9 @@ type Template struct {
 	Setup              []string
 	Env                map[string]string
 	DefaultLimits      api.Limits
-	Network            string
-	DefaultExecTimeout string // optional duration string, e.g. "30m", "2h"
+	Network            string   // default | none | allowlist
+	EgressAllow        []string // hostnames when network=allowlist (future proxy)
+	DefaultExecTimeout string   // optional duration string, e.g. "30m", "2h"
 }
 
 // Loader reads templates from a directory (e.g. environments/go-1.23.yaml).
@@ -105,6 +106,53 @@ func Parse(data []byte) (*Template, error) {
 		case "default_exec_timeout":
 			t.DefaultExecTimeout = unquote(val)
 			i++
+		case "egress":
+			// Optional block for future allowlist proxy:
+			// egress:
+			//   allow:
+			//     - proxy.golang.org
+			i++
+			for i < len(lines) {
+				l := lines[i]
+				if isBlankOrComment(l) {
+					i++
+					continue
+				}
+				if countIndent(l) == 0 {
+					break
+				}
+				trim := strings.TrimSpace(l)
+				ek, _, ok := splitKV(trim)
+				if !ok {
+					if strings.HasPrefix(trim, "-") {
+						return nil, fmt.Errorf("egress: unexpected list at line %d", i+1)
+					}
+					return nil, fmt.Errorf("egress: bad field at line %d", i+1)
+				}
+				if ek != "allow" {
+					return nil, fmt.Errorf("egress: unsupported field %q at line %d", ek, i+1)
+				}
+				baseInd := countIndent(l)
+				i++
+				var allow []string
+				for i < len(lines) {
+					al := lines[i]
+					if isBlankOrComment(al) {
+						i++
+						continue
+					}
+					if countIndent(al) <= baseInd {
+						break
+					}
+					at := strings.TrimSpace(al)
+					if !strings.HasPrefix(at, "-") {
+						return nil, fmt.Errorf("egress.allow: expected list item at line %d", i+1)
+					}
+					allow = append(allow, unquote(strings.TrimSpace(strings.TrimPrefix(at, "-"))))
+					i++
+				}
+				t.EgressAllow = allow
+			}
 		case "cache_mounts":
 			var mounts []CacheMount
 			i++
