@@ -52,6 +52,7 @@ jobs:
         env:
           CELL_SOCKET: /tmp/celld-ci.sock
           CELL_SMOKE_LOG: /tmp/celld-ci.log
+          CELL_RUNTIME: host
           HOME: ${{ runner.temp }}
         run: |
           chmod +x scripts/smoke.sh

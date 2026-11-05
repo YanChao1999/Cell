@@ -3,6 +3,8 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 export PATH="${HOME}/.local/go/bin:/usr/local/go/bin:${PATH}"
+# Default to host execution so smoke does not pull images when Docker is installed.
+export CELL_RUNTIME="${CELL_RUNTIME:-host}"
 SOCKET="${CELL_SOCKET:-${HOME}/.cell/celld.sock}"
 CELL_HOME="${CELL_HOME:-${HOME}/.cell}"
 CACHE_DIR="${CELL_CACHE_DIR:-${CELL_HOME}/cache}"
@@ -34,9 +36,13 @@ done
 curl -sf --unix-socket "$SOCKET" http://localhost/health | grep -q ok
 echo "OK health"
 
-CREATE=$(curl -sf --unix-socket "$SOCKET" -X POST http://localhost/v1/cells \
+if ! CREATE=$(curl -sf --unix-socket "$SOCKET" -X POST http://localhost/v1/cells \
   -H 'Content-Type: application/json' \
-  -d '{"environment":"go-1.23","ttl":"5m"}')
+  -d '{"environment":"go-1.23","ttl":"5m"}'); then
+  echo "create failed; daemon log:" >&2
+  tail -n 80 "$LOG_FILE" >&2 || true
+  exit 1
+fi
 ID=$(printf '%s' "$CREATE" | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])')
 EXEC=$(curl -sf --unix-socket "$SOCKET" -X POST "http://localhost/v1/cells/${ID}/exec" \
   -H 'Content-Type: application/json' \

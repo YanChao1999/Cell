@@ -57,6 +57,10 @@ func New() *Runtime {
 func (r *Runtime) Available() bool { return r.useDocker }
 
 func dockerAvailable() bool {
+	// Explicit host mode for CI smoke and machines that should not pull images.
+	if os.Getenv("CELL_RUNTIME") == "host" {
+		return false
+	}
 	if _, err := exec.LookPath("docker"); err != nil {
 		return false
 	}
@@ -100,11 +104,14 @@ func (r *Runtime) Create(ctx context.Context, opts runtime.CreateOpts) error {
 
 		cmd := exec.CommandContext(ctx, "docker", args...)
 		cmd.Env = os.Environ()
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			return fmt.Errorf("runtime/docker: docker run: %w\n%s", err, out)
+		// Pull progress is on stderr. Only stdout is the container id.
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("runtime/docker: docker run: %w\n%s", err, stderr.String())
 		}
-		id := strings.TrimSpace(string(out))
+		id := lastLine(stdout.String())
 		r.cells[opts.CellID] = &cellRuntime{
 			mode:      modeDocker,
 			container: firstNonEmpty(id, name),
@@ -249,6 +256,15 @@ func dockerMemory(m string) string {
 	default:
 		return m
 	}
+}
+
+func lastLine(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	lines := strings.Split(s, "\n")
+	return strings.TrimSpace(lines[len(lines)-1])
 }
 
 func firstNonEmpty(a, b string) string {
