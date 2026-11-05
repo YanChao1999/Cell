@@ -52,7 +52,12 @@ func (p *Provider) Fetch(ctx context.Context, repo, ref, dest string) error {
 		return fmt.Errorf("source/git: git not found in PATH: %w", err)
 	}
 
-	mirror, err := p.ensureMirror(ctx, repo)
+	var mirror string
+	err := withMirrorLock(filepath.Join(p.ReposRoot, repoHash(repo)), func() error {
+		var e error
+		mirror, e = p.ensureMirror(ctx, repo)
+		return e
+	})
 	if err != nil {
 		return err
 	}

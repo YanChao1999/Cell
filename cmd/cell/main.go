@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 )
 
@@ -58,6 +59,9 @@ Usage:
   cell version
 
 Socket: CELL_SOCKET or ~/.cell/celld.sock
+Long ops (run/create/exec): no client read deadline by default so template
+default_exec_timeout (e.g. 30m–4h) can finish. Override with CELL_CLIENT_TIMEOUT
+(Go duration, e.g. 2h). Short ops (health/list) use a 15s client timeout.
 Primary agent client is the Python SDK (sdk/python).
 `)
 }
@@ -73,15 +77,38 @@ func socketPath() string {
 	return filepath.Join(home, ".cell", "celld.sock")
 }
 
-func unixClient() *http.Client {
+func unixTransport() *http.Transport {
 	path := socketPath()
-	return &http.Client{
-		Timeout: 120 * time.Second,
-		Transport: &http.Transport{
-			Dial: func(_, _ string) (net.Conn, error) {
-				return net.Dial("unix", path)
-			},
+	return &http.Transport{
+		Dial: func(_, _ string) (net.Conn, error) {
+			return net.DialTimeout("unix", path, 5*time.Second)
 		},
+		ResponseHeaderTimeout: 0,
+	}
+}
+
+// clientTimeout returns the optional overall HTTP client timeout from
+// CELL_CLIENT_TIMEOUT. Empty/0 means no client-side deadline (server enforces).
+func clientTimeout() time.Duration {
+	raw := os.Getenv("CELL_CLIENT_TIMEOUT")
+	if raw == "" {
+		return 0
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil {
+		// allow plain seconds
+		if secs, err2 := strconv.Atoi(raw); err2 == nil && secs > 0 {
+			return time.Duration(secs) * time.Second
+		}
+		return 0
+	}
+	return d
+}
+
+func unixClient(timeout time.Duration) *http.Client {
+	return &http.Client{
+		Timeout:   timeout,
+		Transport: unixTransport(),
 	}
 }
 
@@ -95,7 +122,7 @@ func prettyJSON(body []byte) {
 }
 
 func getAndPrintJSON(url string) error {
-	resp, err := unixClient().Get(url)
+	resp, err := unixClient(15 * time.Second).Get(url)
 	if err != nil {
 		return err
 	}
@@ -118,7 +145,11 @@ func doDestroy(id string) error {
 	if err != nil {
 		return err
 	}
-	resp, err := unixClient().Do(req)
+	timeout := clientTimeout()
+	if timeout <= 0 {
+		timeout = 2 * time.Minute
+	}
+	resp, err := unixClient(timeout).Do(req)
 	if err != nil {
 		return err
 	}
@@ -172,7 +203,7 @@ func doRun(args []string) error {
 		"commands":     cmds,
 	}
 	raw, _ := json.Marshal(payload)
-	resp, err := unixClient().Post("http://localhost/v1/run", "application/json", bytes.NewReader(raw))
+	resp, err := unixClient(clientTimeout()).Post("http://localhost/v1/run", "application/json", bytes.NewReader(raw))
 	if err != nil {
 		return err
 	}

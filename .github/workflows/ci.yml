@@ -29,6 +29,13 @@ jobs:
         run: |
           go build -o bin/celld ./cmd/celld
           go build -o bin/cell ./cmd/cell
+          CGO_ENABLED=0 go build -o bin/cell-egress ./cmd/cell-egress
+
+      - name: Unit tests (worker packages)
+        run: |
+          go test ./internal/worker/cache/ ./internal/worker/envtemplate/ \
+            ./internal/worker/egress/ ./internal/worker/manager/ \
+            ./internal/worker/source/git/ ./internal/worker/runtime/docker/
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v7
@@ -48,15 +55,11 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: API smoke (host fallback)
+      - name: API smoke (host fallback, temp cell-home)
         env:
-          CELL_SOCKET: /tmp/celld-ci.sock
-          CELL_SMOKE_LOG: /tmp/celld-ci.log
           CELL_RUNTIME: host
-          HOME: ${{ runner.temp }}
         run: |
           chmod +x scripts/smoke.sh
-          mkdir -p "$HOME/.cell"
           ./scripts/smoke.sh
 
   python:

@@ -495,6 +495,11 @@ func limitArgs(limits api.Limits) []string {
 	if limits.Memory != "" {
 		args = append(args, "--memory", dockerMemory(limits.Memory))
 	}
+	// Disk → --storage-opt size=… only when opted in. Most Docker installs
+	// (overlay2 without xfs pquota) reject storage-opt and would break create.
+	if limits.Disk != "" && os.Getenv("CELL_DOCKER_DISK_STORAGE_OPT") == "1" {
+		args = append(args, "--storage-opt", "size="+dockerDisk(limits.Disk))
+	}
 	return args
 }
 
@@ -514,6 +519,11 @@ func dockerMemory(m string) string {
 	default:
 		return m
 	}
+}
+
+// dockerDisk maps template disk limits (e.g. 10Gi) to Docker storage-opt size.
+func dockerDisk(d string) string {
+	return dockerMemory(d)
 }
 
 func lastLine(s string) string {
