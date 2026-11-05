@@ -39,7 +39,7 @@ type Options struct {
 	ID             string
 	MaxCells       int
 	WorkspacesRoot string // default ~/.cell/workspaces
-	ReposRoot       string // bare git mirrors (for Docker same-path RO bind)
+	ReposRoot      string // bare git mirrors (for Docker same-path RO bind)
 	CacheDir       string // durable package caches (default ~/.cell/cache)
 	Runtime        runtime.Runtime
 	Source         git.Source
@@ -169,15 +169,15 @@ func (w *LocalWorker) CreateCell(ctx context.Context, req api.CreateCellRequest)
 	}
 
 	createOpts := runtime.CreateOpts{
-		CellID:      id,
-		Workspace:   ws,
-		Environment: req.Environment,
-		Image:       image,
-		Limits:      limits,
-		Env:         envVars,
-		Network:     network,
-		EgressAllow: egressAllow,
-		CacheMounts: mounts,
+		CellID:       id,
+		Workspace:    ws,
+		Environment:  req.Environment,
+		Image:        image,
+		Limits:       limits,
+		Env:          envVars,
+		Network:      network,
+		EgressAllow:  egressAllow,
+		CacheMounts:  mounts,
 		GitReposRoot: w.reposRoot,
 	}
 	// Docker: use per-Cell writable cache dirs so one Cell cannot poison the

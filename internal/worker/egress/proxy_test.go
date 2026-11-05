@@ -33,9 +33,11 @@ func TestProxyAllowAndDeny(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = upstream.Close() }()
-	go http.Serve(upstream, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte("ok-upstream"))
-	}))
+	go func() {
+		_ = http.Serve(upstream, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte("ok-upstream"))
+		}))
+	}()
 
 	var audit strings.Builder
 	px, err := StartProxy(context.Background(), Policy{

@@ -27,13 +27,13 @@ const (
 )
 
 type cellRuntime struct {
-	mode           mode
-	container      string // docker container name/id when modeDocker
-	workspace      string
-	env            map[string]string // host-fallback / extra exec env (cache paths)
-	egressNetwork  string            // internal docker network for allowlist
-	egressProxy    string            // proxy sidecar container name
-	egressAudit    string            // host audit log path
+	mode          mode
+	container     string // docker container name/id when modeDocker
+	workspace     string
+	env           map[string]string // host-fallback / extra exec env (cache paths)
+	egressNetwork string            // internal docker network for allowlist
+	egressProxy   string            // proxy sidecar container name
+	egressAudit   string            // host audit log path
 }
 
 type activeExec struct {
