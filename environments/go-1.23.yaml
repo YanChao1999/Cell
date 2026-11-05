@@ -7,7 +7,8 @@ cache_mounts:
   - host: go-mod
     container: /go/pkg/mod
   - host: go-build
-    container: /root/.cache/go-build
+    # Under workspace-friendly path (Cell runs non-root; avoid /root).
+    container: /workspace/.cache/go-build
 
 setup:
   - go version
@@ -16,7 +17,7 @@ env:
   GO111MODULE: "on"
   CGO_ENABLED: "0"
   GOMODCACHE: /go/pkg/mod
-  GOCACHE: /root/.cache/go-build
+  GOCACHE: /workspace/.cache/go-build
 
 default_limits:
   cpu: "2"

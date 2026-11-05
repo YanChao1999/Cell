@@ -24,6 +24,7 @@ type LocalWorker struct {
 	id         string
 	maxCells   int
 	workspaces string
+	reposRoot  string
 	rt         runtime.Runtime
 	source     git.Source
 	envs       *envtemplate.Loader
@@ -38,6 +39,7 @@ type Options struct {
 	ID             string
 	MaxCells       int
 	WorkspacesRoot string // default ~/.cell/workspaces
+	ReposRoot       string // bare git mirrors (for Docker same-path RO bind)
 	CacheDir       string // durable package caches (default ~/.cell/cache)
 	Runtime        runtime.Runtime
 	Source         git.Source
@@ -90,10 +92,17 @@ func New(opts Options) (*LocalWorker, error) {
 	if err := os.MkdirAll(opts.WorkspacesRoot, 0o755); err != nil {
 		return nil, err
 	}
+	reposRoot := opts.ReposRoot
+	if reposRoot == "" {
+		if p, ok := opts.Source.(*git.Provider); ok {
+			reposRoot = p.ReposRoot
+		}
+	}
 	return &LocalWorker{
 		id:         opts.ID,
 		maxCells:   opts.MaxCells,
 		workspaces: opts.WorkspacesRoot,
+		reposRoot:  reposRoot,
 		rt:         opts.Runtime,
 		source:     opts.Source,
 		envs:       opts.EnvLoader,
@@ -159,7 +168,7 @@ func (w *LocalWorker) CreateCell(ctx context.Context, req api.CreateCellRequest)
 		w.cacheIndex.Add(m.HostKey)
 	}
 
-	if err := w.rt.Create(ctx, runtime.CreateOpts{
+	createOpts := runtime.CreateOpts{
 		CellID:      id,
 		Workspace:   ws,
 		Environment: req.Environment,
@@ -169,7 +178,22 @@ func (w *LocalWorker) CreateCell(ctx context.Context, req api.CreateCellRequest)
 		Network:     network,
 		EgressAllow: egressAllow,
 		CacheMounts: mounts,
-	}); err != nil {
+		GitReposRoot: w.reposRoot,
+	}
+	// Docker: use per-Cell writable cache dirs so one Cell cannot poison the
+	// durable shared host cache. Host fallback keeps shared dirs via env.
+	if dockerIsolating(w.rt) {
+		cellMounts, err := w.perCellCacheMounts(ws, mounts)
+		if err != nil {
+			_ = w.source.Release(ctx, ws)
+			_ = os.RemoveAll(ws)
+			w.removeCell(id)
+			return nil, err
+		}
+		createOpts.CacheMounts = cellMounts
+	}
+
+	if err := w.rt.Create(ctx, createOpts); err != nil {
 		_ = w.source.Release(ctx, ws)
 		_ = os.RemoveAll(ws)
 		w.removeCell(id)
@@ -314,6 +338,47 @@ func cloneStringMap(in map[string]string) map[string]string {
 		out[k] = v
 	}
 	return out
+}
+
+// dockerIsolating reports whether the runtime will create a Docker Cell (not host fallback).
+func dockerIsolating(rt runtime.Runtime) bool {
+	type dockerAvail interface{ Available() bool }
+	if d, ok := rt.(dockerAvail); ok {
+		return d.Available()
+	}
+	return false
+}
+
+// perCellCacheMounts places tool caches under the Cell workspace so Docker
+// binds are unique per Cell. Shared ~/.cell/cache remains for host fallback.
+// When a shared durable dir exists, it is copied into the per-Cell dir with
+// cache.SeedCopy (no hardlinks — Cell writes cannot poison shared).
+func (w *LocalWorker) perCellCacheMounts(ws string, shared []cache.Mount) ([]cache.Mount, error) {
+	if len(shared) == 0 {
+		return nil, nil
+	}
+	out := make([]cache.Mount, 0, len(shared))
+	for _, m := range shared {
+		key := m.HostKey
+		if key == "" {
+			key = filepath.Base(m.HostAbs)
+		}
+		host := filepath.Join(ws, ".cell-cache", key)
+		if err := os.MkdirAll(host, 0o755); err != nil {
+			return nil, fmt.Errorf("manager: per-cell cache %s: %w", key, err)
+		}
+		if m.HostAbs != "" && m.HostAbs != host {
+			if err := cache.SeedCopy(m.HostAbs, host, cache.SeedOptions{}); err != nil {
+				return nil, fmt.Errorf("manager: trusted cache seed %s: %w", key, err)
+			}
+		}
+		out = append(out, cache.Mount{
+			HostKey:   key,
+			HostAbs:   host,
+			Container: m.Container,
+		})
+	}
+	return out, nil
 }
 
 func newCellID() (string, error) {

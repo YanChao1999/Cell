@@ -28,7 +28,9 @@ Component, class, and sequence diagrams are in [ARCHITECTURE.md](ARCHITECTURE.md
 export PATH=$HOME/.local/bin:$HOME/.local/go/bin:/usr/local/go/bin:$PATH
 go build -o bin/celld ./cmd/celld
 go build -o bin/cell ./cmd/cell
-go test ./internal/worker/cache/ ./internal/worker/envtemplate/
+# Required for network: allowlist (Docker sidecar proxy)
+CGO_ENABLED=0 go build -o bin/cell-egress ./cmd/cell-egress
+go test ./internal/worker/cache/ ./internal/worker/envtemplate/ ./internal/worker/egress/ ./internal/worker/runtime/docker/
 ```
 
 ## Run (`mode=all`)

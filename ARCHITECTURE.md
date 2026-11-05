@@ -18,7 +18,7 @@ Environment templates declare an egress policy. This is not “always offline”
 | --- | --- | --- |
 | `default` / `open` | Normal Docker outbound | Agent Cells (`go-1.23`, `python-3.12`) that need modules, docs, APIs |
 | `none` | `docker run --network none` | Air-gapped embedded builds (`embedded-zephyr`, `embedded-linux`) |
-| `allowlist` | **Refused until implemented** | Future: no direct egress; HTTP(S) only via a Cell egress proxy that enforces `egress.allow` hostnames |
+| `allowlist` | Internal Docker network + `cell-egress` sidecar | No direct egress; HTTP(S) via CONNECT/forward proxy; host allowlist + JSON audit log |
 
 Schema already accepted in templates:
 
@@ -38,8 +38,8 @@ Cell is an isolation product. Controls belong in the daemon and `Runtime` implem
 
 - Fail closed on unfinished or unenforceable policy (allowlist, host+`none`, Docker+empty image).
 - No host escape when Docker is the selected backend; no docker.sock; no privileged / host-namespace shortcuts.
-- Docker today is a **baseline** container boundary (verified: not privileged, binds under cell home only). It is not yet a hardened sandbox — non-root, `no-new-privileges`, explicit cap-drop, read-only rootfs, and shared-cache trust are tracked debt in [TECH_DEBT.md](TECH_DEBT.md).
-- Stronger isolation later is another `Runtime` (microVM), not an SDK change. Design APIs so security policy (`network`, limits, future egress allow) stays declarative in templates and is enforced in software on the worker.
+- Docker create path hardens by construction: non-root (`--user` daemon uid/gid), `no-new-privileges`, `--cap-drop=ALL` + minimal add-backs, read-only rootfs + tmpfs, per-Cell cache binds, RO same-path git repos mount. Remaining: allowlist egress proxy, warm trusted cache seed, microVM backend — see [TECH_DEBT.md](TECH_DEBT.md).
+- Stronger isolation later is another `Runtime` (microVM stub under `internal/worker/runtime/microvm`), not an SDK change. Egress allowlist is `internal/worker/egress` (stub; create still fail-closed).
 
 Placement order, already in `scheduler.Place`:
 
