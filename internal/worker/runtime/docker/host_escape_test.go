@@ -72,26 +72,22 @@ func TestHostEscape_NetworkNoneRejectedOnHostMode(t *testing.T) {
 	}
 }
 
-func TestHostEscape_AllowlistFailClosed(t *testing.T) {
-	t.Setenv("CELL_RUNTIME", "")
+func TestHostEscape_AllowlistFailClosedWithoutBinaryOrAllow(t *testing.T) {
 	_ = os.Unsetenv("CELL_RUNTIME")
 	rt := New()
 	if !rt.Available() {
 		t.Skip("docker not available")
 	}
+	// Empty allowlist must never open the network.
 	err := rt.Create(context.Background(), runtime.CreateOpts{
-		CellID:      "escape-allowlist",
-		Workspace:   t.TempDir(),
-		Image:       "golang:1.23-bookworm",
-		Network:     "allowlist",
-		EgressAllow: []string{"example.com"},
+		CellID:    "escape-allowlist-empty",
+		Workspace: t.TempDir(),
+		Image:     "golang:1.23-bookworm",
+		Network:   "allowlist",
 	})
 	if err == nil {
-		_ = rt.Destroy(context.Background(), "escape-allowlist")
-		t.Fatal("allowlist must fail closed")
-	}
-	if !strings.Contains(err.Error(), "allowlist") {
-		t.Fatalf("unexpected: %v", err)
+		_ = rt.Destroy(context.Background(), "escape-allowlist-empty")
+		t.Fatal("empty allowlist must fail closed")
 	}
 }
 

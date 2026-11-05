@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -26,10 +27,13 @@ const (
 )
 
 type cellRuntime struct {
-	mode      mode
-	container string // docker container name/id when modeDocker
-	workspace string
-	env       map[string]string // host-fallback / extra exec env (cache paths)
+	mode          mode
+	container     string // docker container name/id when modeDocker
+	workspace     string
+	env           map[string]string // host-fallback / extra exec env (cache paths)
+	egressNetwork string            // internal docker network for allowlist
+	egressProxy   string            // proxy sidecar container name
+	egressAudit   string            // host audit log path
 }
 
 type activeExec struct {
@@ -129,27 +133,28 @@ func (r *Runtime) Create(ctx context.Context, opts runtime.CreateOpts) error {
 
 	if r.useDocker {
 		name := containerName(opts.CellID)
-		args := []string{
-			"run", "-d",
-			"--name", name,
-			"--label", "cell.id=" + opts.CellID,
-			"-v", opts.Workspace + ":/workspace",
-			"-w", "/workspace",
-		}
-		if network != "" {
-			args = append(args, "--network", network)
-		}
-		for _, m := range opts.CacheMounts {
-			if m.HostAbs == "" || m.Container == "" {
-				continue
+		var (
+			egressNet   string
+			egressProxy string
+			egressAudit string
+		)
+		runNetwork := network
+		runOpts := opts
+		if network == "allowlist" {
+			netName, proxyName, auditPath, proxyEnv, egErr := startAllowlistEgress(ctx, opts)
+			if egErr != nil {
+				return egErr
 			}
-			args = append(args, "-v", m.HostAbs+":"+m.Container)
+			egressNet, egressProxy, egressAudit = netName, proxyName, auditPath
+			runNetwork = netName // Cell only on the internal network (no direct egress)
+			runOpts.Env = mergeEnv(opts.Env, proxyEnv)
 		}
-		args = append(args, limitArgs(opts.Limits)...)
-		for k, v := range opts.Env {
-			args = append(args, "-e", k+"="+v)
+
+		args, err := dockerRunArgs(runOpts, runNetwork, name)
+		if err != nil {
+			cleanupAllowlistEgress(context.Background(), egressProxy, egressNet)
+			return err
 		}
-		args = append(args, opts.Image, "sleep", "infinity")
 
 		cmd := exec.CommandContext(ctx, "docker", args...)
 		cmd.Env = os.Environ()
@@ -157,15 +162,19 @@ func (r *Runtime) Create(ctx context.Context, opts runtime.CreateOpts) error {
 		cmd.Stdout = &stdout
 		cmd.Stderr = &stderr
 		if err := cmd.Run(); err != nil {
+			cleanupAllowlistEgress(context.Background(), egressProxy, egressNet)
 			return fmt.Errorf("runtime/docker: docker run: %w\n%s", err, stderr.String())
 		}
 		id := lastLine(stdout.String())
 		r.mu.Lock()
 		r.cells[opts.CellID] = &cellRuntime{
-			mode:      modeDocker,
-			container: firstNonEmpty(id, name),
-			workspace: opts.Workspace,
-			env:       copyEnv(opts.Env),
+			mode:          modeDocker,
+			container:     firstNonEmpty(id, name),
+			workspace:     opts.Workspace,
+			env:           copyEnv(runOpts.Env),
+			egressNetwork: egressNet,
+			egressProxy:   egressProxy,
+			egressAudit:   egressAudit,
 		}
 		r.mu.Unlock()
 		return nil
@@ -316,6 +325,9 @@ func (r *Runtime) Destroy(ctx context.Context, cellID string) error {
 			return fmt.Errorf("runtime/docker: docker rm -f: %w\n%s", err, out)
 		}
 	}
+	if sr.egressProxy != "" || sr.egressNetwork != "" {
+		cleanupAllowlistEgress(ctx, sr.egressProxy, sr.egressNetwork)
+	}
 
 	r.mu.Lock()
 	delete(r.cells, cellID)
@@ -379,7 +391,7 @@ func killActiveExec(ae *activeExec) {
 // Policies:
 //   - "" / default / open / bridge → normal Docker egress (agent Cells)
 //   - none → --network none (air gap; embedded offline builds)
-//   - allowlist → refused until an egress proxy exists (never silently open)
+//   - allowlist → internal network + egress proxy sidecar (see startAllowlistEgress)
 func normalizeNetwork(n string) (string, error) {
 	n = strings.TrimSpace(strings.ToLower(n))
 	switch n {
@@ -388,7 +400,7 @@ func normalizeNetwork(n string) (string, error) {
 	case "none":
 		return "none", nil
 	case "allowlist":
-		return "", fmt.Errorf("runtime/docker: network allowlist is not implemented yet (refusing open egress; use default or none)")
+		return "allowlist", nil
 	default:
 		return "", fmt.Errorf("runtime/docker: unsupported network mode %q (want default|none|allowlist)", n)
 	}
@@ -401,6 +413,78 @@ func shellQuote(s string) string {
 func containerName(cellID string) string {
 	safe := strings.ReplaceAll(cellID, "/", "-")
 	return "cell-" + safe
+}
+
+// dockerRunArgs builds a hardened docker run command (security in the create path).
+//
+// Baseline: non-root (daemon uid/gid), no-new-privileges, cap-drop ALL + minimal
+// add-backs, read-only rootfs with tmpfs for /tmp and /var/tmp, no docker.sock,
+// optional RO git repos mount at the host path for worktree resolution.
+func dockerRunArgs(opts runtime.CreateOpts, network, name string) ([]string, error) {
+	if opts.Workspace == "" {
+		return nil, fmt.Errorf("runtime/docker: workspace is required")
+	}
+	uid := os.Getuid()
+	gid := os.Getgid()
+	if uid < 0 || gid < 0 {
+		return nil, fmt.Errorf("runtime/docker: cannot determine uid/gid for non-root Cell")
+	}
+
+	args := []string{
+		"run", "-d",
+		"--name", name,
+		"--label", "cell.id=" + opts.CellID,
+		"--user", fmt.Sprintf("%d:%d", uid, gid),
+		"--security-opt", "no-new-privileges:true",
+		"--cap-drop", "ALL",
+		"--read-only",
+		"--tmpfs", "/tmp:rw,nosuid,nodev,exec,size=1g",
+		"--tmpfs", "/var/tmp:rw,nosuid,nodev,exec,size=256m",
+		"-v", opts.Workspace + ":/workspace",
+		"-w", "/workspace",
+		"-e", "HOME=/workspace",
+	}
+	// Minimal capabilities needed for common language toolchains inside the Cell.
+	// Never add SYS_ADMIN, NET_ADMIN, SYS_PTRACE, SYS_MODULE, or privileged.
+	for _, cap := range []string{
+		"CHOWN", "DAC_OVERRIDE", "FOWNER", "FSETID",
+		"SETGID", "SETUID", "KILL", "NET_BIND_SERVICE",
+	} {
+		args = append(args, "--cap-add", cap)
+	}
+	// "" = docker default bridge; "none" = air gap; otherwise a network name
+	// (including allowlist internal networks like cell-eg-<id>).
+	if network != "" {
+		args = append(args, "--network", network)
+	}
+	if root := strings.TrimSpace(opts.GitReposRoot); root != "" {
+		if !filepath.IsAbs(root) {
+			return nil, fmt.Errorf("runtime/docker: GitReposRoot must be absolute (got %q)", root)
+		}
+		// Same-path RO bind so worktree gitdir files that point into the host
+		// mirror resolve inside the container without granting write to mirrors.
+		args = append(args, "-v", root+":"+root+":ro")
+	}
+	for _, m := range opts.CacheMounts {
+		if m.HostAbs == "" || m.Container == "" {
+			continue
+		}
+		if !filepath.IsAbs(m.HostAbs) {
+			return nil, fmt.Errorf("runtime/docker: cache host path must be absolute: %q", m.HostAbs)
+		}
+		// Caller supplies per-Cell dirs for Docker (shared durable caches stay on
+		// the host fallback path only) to avoid cross-Cell cache poison.
+		args = append(args, "-v", m.HostAbs+":"+m.Container)
+	}
+	args = append(args, limitArgs(opts.Limits)...)
+	for k, v := range opts.Env {
+		if k == "" || k == "HOME" {
+			continue // HOME is forced to /workspace for non-root + read-only rootfs
+		}
+		args = append(args, "-e", k+"="+v)
+	}
+	args = append(args, opts.Image, "sleep", "infinity")
+	return args, nil
 }
 
 func limitArgs(limits api.Limits) []string {

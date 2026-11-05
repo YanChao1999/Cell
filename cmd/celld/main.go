@@ -167,6 +167,7 @@ func runServe(args []string) error {
 	lw, err := manager.New(manager.Options{
 		ID:             *workerID,
 		WorkspacesRoot: *workspaces,
+		ReposRoot:      *repos,
 		CacheDir:       *cacheDir,
 		CacheLayout:    cacheLayout,
 		Runtime:        docker.New(),

@@ -30,7 +30,12 @@ type CreateOpts struct {
 	EgressAllow []string
 	// CacheMounts are durable host dirs bind-mounted into the container
 	// (Docker). In host-fallback mode they drive cache-related env vars.
+	// In Docker mode the worker should pass per-Cell writable dirs here so
+	// Cells cannot poison a shared host cache (see TECH_DEBT / cache trust).
 	CacheMounts []cache.Mount
+	// GitReposRoot, when set, is bind-mounted read-only at the same absolute
+	// path inside the container so git worktrees (.git gitdir files) resolve.
+	GitReposRoot string
 }
 
 // ExecOpts are options for running a command inside a Cell runtime.

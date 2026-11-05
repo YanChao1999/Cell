@@ -19,8 +19,8 @@ func TestNormalizeNetwork(t *testing.T) {
 		{"bridge", "", false},
 		{"NONE", "none", false},
 		{"none", "none", false},
-		{"allowlist", "", true},
-		{"allowlist ", "", true},
+		{"allowlist", "allowlist", false},
+		{"allowlist ", "allowlist", false},
 		{"bogus", "", true},
 	}
 	for _, tc := range cases {
