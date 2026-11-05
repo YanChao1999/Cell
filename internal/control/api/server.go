@@ -53,7 +53,9 @@ func (s *Server) ListenAndServe(socketPath string) error {
 	if err := os.MkdirAll(filepath.Dir(socketPath), 0o755); err != nil {
 		return err
 	}
-	_ = os.Remove(socketPath)
+	if err := removeStaleSocket(socketPath); err != nil {
+		return err
+	}
 	ln, err := net.Listen("unix", socketPath)
 	if err != nil {
 		return err
@@ -62,6 +64,30 @@ func (s *Server) ListenAndServe(socketPath string) error {
 	_ = os.Chmod(socketPath, 0o600)
 	log.Printf("celld listening on unix://%s", socketPath)
 	return http.Serve(ln, s.mux)
+}
+
+// removeStaleSocket deletes only a dead socket. A live listener is left alone
+// so a second celld cannot hijack the first daemon's endpoint.
+func removeStaleSocket(socketPath string) error {
+	fi, err := os.Lstat(socketPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	if fi.Mode()&os.ModeSocket == 0 {
+		return fmt.Errorf("socket path %s exists and is not a unix socket", socketPath)
+	}
+	conn, err := net.DialTimeout("unix", socketPath, 500*time.Millisecond)
+	if err == nil {
+		_ = conn.Close()
+		return fmt.Errorf("celld already listening on %s", socketPath)
+	}
+	if err := os.Remove(socketPath); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -156,8 +182,12 @@ func (s *Server) destroyCell(ctx context.Context, id string) error {
 }
 
 func (s *Server) destroyCellOn(ctx context.Context, cellID, workerID string) error {
-	if w, ok := s.scheduler.Get(workerID); ok {
-		_ = w.DestroyCell(ctx, cellID)
+	w, ok := s.scheduler.Get(workerID)
+	if !ok {
+		return fmt.Errorf("worker %s not found for cell %s", workerID, cellID)
+	}
+	if err := w.DestroyCell(ctx, cellID); err != nil {
+		return err
 	}
 	return s.meta.Delete(cellID)
 }
@@ -216,9 +246,13 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
+	// Cleanup must outlive a canceled client request so containers are not left behind.
+	cleanupCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
 	destroyed := true
-	if err := s.destroyCell(r.Context(), info.ID); err != nil {
+	if err := s.destroyCell(cleanupCtx, info.ID); err != nil {
 		destroyed = false
+		log.Printf("api: /v1/run cleanup for %s: %v", info.ID, err)
 	}
 	writeJSON(w, http.StatusOK, cellapi.RunResult{
 		ID:        info.ID,

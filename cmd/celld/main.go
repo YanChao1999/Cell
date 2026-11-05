@@ -91,6 +91,10 @@ func runServe(args []string) error {
 	if cellHome == "" {
 		cellHome = filepath.Join(home, ".cell")
 	}
+	cellHome, err = filepath.Abs(cellHome)
+	if err != nil {
+		return fmt.Errorf("cell-home: %w", err)
+	}
 	if *socket == "" {
 		*socket = filepath.Join(cellHome, "celld.sock")
 	}
@@ -114,6 +118,15 @@ func runServe(args []string) error {
 	}
 	_ = *mode
 
+	// Docker bind mounts and git worktrees require absolute roots.
+	for _, p := range []*string{socket, stateDir, workspaces, repos, cacheDir} {
+		abs, err := filepath.Abs(*p)
+		if err != nil {
+			return err
+		}
+		*p = abs
+	}
+
 	store, err := meta.New(*stateDir)
 	if err != nil {
 		return fmt.Errorf("meta: %w", err)
@@ -124,11 +137,9 @@ func runServe(args []string) error {
 		return fmt.Errorf("git source: %w", err)
 	}
 
-	envAbs := *environments
-	if !filepath.IsAbs(envAbs) {
-		if wd, err := os.Getwd(); err == nil {
-			envAbs = filepath.Join(wd, envAbs)
-		}
+	envAbs, err := filepath.Abs(*environments)
+	if err != nil {
+		return fmt.Errorf("environments: %w", err)
 	}
 	envLoader := envtemplate.New(envAbs)
 	cacheLayout := cache.NewLayout(*cacheDir)
@@ -136,6 +147,22 @@ func runServe(args []string) error {
 		return fmt.Errorf("cache: %w", err)
 	}
 	log.Printf("celld: environments=%s repos=%s cache=%s", envAbs, *repos, *cacheDir)
+
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+
+	// Security: after restart, worker/runtime maps are empty. Tear down any
+	// leftover containers and drop unrecovered meta rather than advertising
+	// ghost Cells that exec would miss (or worse, host-escape).
+	if err := docker.PruneLabeledContainers(ctx); err != nil {
+		log.Printf("celld: prune orphan containers: %v", err)
+	}
+	for _, rec := range store.List() {
+		_ = os.RemoveAll(filepath.Join(*workspaces, rec.ID))
+	}
+	if err := store.Reset(); err != nil {
+		return fmt.Errorf("meta reset on startup: %w", err)
+	}
 
 	lw, err := manager.New(manager.Options{
 		ID:             *workerID,
@@ -152,9 +179,6 @@ func runServe(args []string) error {
 
 	sched := scheduler.New([]workerapi.Worker{lw}, *workerID)
 	srv := ctrlapi.New(store, sched)
-
-	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer cancel()
 
 	rp := reaper.New(store, sched, srv.DestroyCell, 15*time.Second)
 	go rp.Run(ctx)
