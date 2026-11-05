@@ -25,4 +25,6 @@ default_limits:
 
 default_exec_timeout: 30m
 
-# network: default  # optional; omit to use daemon default
+# Egress policy: default = normal Docker outbound (agents need modules/docs).
+# none = air gap. allowlist = future proxy allowlist (refused until implemented).
+network: default

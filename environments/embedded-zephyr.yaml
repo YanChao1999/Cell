@@ -27,4 +27,6 @@ default_limits:
 # very large images. This is the default when exec omits timeout_seconds.
 default_exec_timeout: 2h
 
+# Air-gapped by default. Offline SDK/module caches should be enough.
+# Do not switch to default unless the toolchain genuinely needs outbound access.
 network: none

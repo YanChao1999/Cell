@@ -147,7 +147,7 @@ func (w *LocalWorker) CreateCell(ctx context.Context, req api.CreateCellRequest)
 		return nil, err
 	}
 
-	image, limits, envVars, mounts, err := w.resolveEnv(req)
+	image, limits, envVars, mounts, network, egressAllow, err := w.resolveEnv(req)
 	if err != nil {
 		_ = w.source.Release(ctx, ws)
 		_ = os.RemoveAll(ws)
@@ -166,6 +166,8 @@ func (w *LocalWorker) CreateCell(ctx context.Context, req api.CreateCellRequest)
 		Image:       image,
 		Limits:      limits,
 		Env:         envVars,
+		Network:     network,
+		EgressAllow: egressAllow,
 		CacheMounts: mounts,
 	}); err != nil {
 		_ = w.source.Release(ctx, ws)
@@ -185,21 +187,25 @@ func (w *LocalWorker) resolveEnv(req api.CreateCellRequest) (
 	limits api.Limits,
 	env map[string]string,
 	mounts []cache.Mount,
+	network string,
+	egressAllow []string,
 	err error,
 ) {
 	limits = req.Limits
 	if req.Environment == "" {
-		return "", limits, nil, nil, nil
+		return "", limits, nil, nil, "", nil, nil
 	}
 	if w.envs == nil {
-		return "", limits, nil, nil, fmt.Errorf("manager: environment %q requested but no environments dir configured", req.Environment)
+		return "", limits, nil, nil, "", nil, fmt.Errorf("manager: environment %q requested but no environments dir configured", req.Environment)
 	}
 	tmpl, err := w.envs.Load(req.Environment)
 	if err != nil {
-		return "", limits, nil, nil, err
+		return "", limits, nil, nil, "", nil, err
 	}
 	image = tmpl.Image
 	env = cloneStringMap(tmpl.Env)
+	network = tmpl.Network
+	egressAllow = append([]string(nil), tmpl.EgressAllow...)
 	if limits.CPU == "" {
 		limits.CPU = tmpl.DefaultLimits.CPU
 	}
@@ -218,10 +224,10 @@ func (w *LocalWorker) resolveEnv(req api.CreateCellRequest) (
 		}
 		mounts, err = w.cache.ResolveMounts(keys, ctrs)
 		if err != nil {
-			return "", limits, nil, nil, err
+			return "", limits, nil, nil, "", nil, err
 		}
 	}
-	return image, limits, env, mounts, nil
+	return image, limits, env, mounts, network, egressAllow, nil
 }
 
 func (w *LocalWorker) Exec(ctx context.Context, cellID string, req api.ExecRequest) (*api.ExecResult, error) {
@@ -269,15 +275,19 @@ func (w *LocalWorker) DestroyCell(ctx context.Context, cellID string) error {
 		w.mu.Unlock()
 		return fmt.Errorf("cell %s not found on worker %s", cellID, w.id)
 	}
-	delete(w.cells, cellID)
 	ws := cell.Workspace
 	w.mu.Unlock()
 
-	_ = w.rt.Destroy(ctx, cellID)
+	if err := w.rt.Destroy(ctx, cellID); err != nil {
+		return err
+	}
 	_ = w.source.Release(ctx, ws)
 	if ws != "" {
-		_ = os.RemoveAll(ws)
+		if err := os.RemoveAll(ws); err != nil {
+			return fmt.Errorf("manager: remove workspace %s: %w", ws, err)
+		}
 	}
+	w.removeCell(cellID)
 	return nil
 }
 

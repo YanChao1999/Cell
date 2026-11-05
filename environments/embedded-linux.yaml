@@ -29,4 +29,5 @@ default_limits:
 # Yocto/OE builds routinely exceed 30m; default exec timeout is longer.
 default_exec_timeout: 4h
 
+# Air-gapped by default (Yocto/OE offline mirrors via cache mounts).
 network: none
