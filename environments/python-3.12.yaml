@@ -25,6 +25,5 @@ default_limits:
 
 default_exec_timeout: 30m
 
-# Agents typically need PyPI/docs. Use network: none only for air-gapped runs.
-# allowlist (+ egress.allow) is reserved for a future egress proxy.
+# Agents typically need PyPI/docs. Use network: none for air-gap; allowlist + egress.allow for proxy.
 network: default

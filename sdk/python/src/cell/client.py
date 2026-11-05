@@ -94,6 +94,36 @@ class Cell:
         )
 
 
+def _default_timeout() -> httpx.Timeout:
+    """Client timeouts that do not clip template ``default_exec_timeout``.
+
+    Connect stays bounded; read/write have no deadline so long create/setup/exec
+    (e.g. 30m–4h) can finish. Override with ``timeout=`` or ``CELL_CLIENT_TIMEOUT``
+    (seconds as float, or a Go-style duration string like ``2h``).
+    """
+    raw = os.environ.get("CELL_CLIENT_TIMEOUT", "").strip()
+    if raw:
+        seconds = _parse_timeout_seconds(raw)
+        if seconds is not None:
+            return httpx.Timeout(seconds, connect=10.0)
+    return httpx.Timeout(None, connect=10.0)
+
+
+def _parse_timeout_seconds(raw: str) -> float | None:
+    try:
+        return float(raw)
+    except ValueError:
+        pass
+    units = {"ns": 1e-9, "us": 1e-6, "µs": 1e-6, "ms": 1e-3, "s": 1.0, "m": 60.0, "h": 3600.0}
+    for suffix, mul in sorted(units.items(), key=lambda kv: -len(kv[0])):
+        if raw.endswith(suffix):
+            try:
+                return float(raw[: -len(suffix)]) * mul
+            except ValueError:
+                return None
+    return None
+
+
 class Client:
     """Async client for the Cell daemon Agent API.
 
@@ -105,14 +135,19 @@ class Client:
         self,
         endpoint: str | None = None,
         *,
-        timeout: float = 120.0,
+        timeout: float | httpx.Timeout | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         endpoint = endpoint or os.environ.get("CELL_ENDPOINT") or _default_endpoint()
         uds, base_url = _parse_endpoint(endpoint)
         self._endpoint = endpoint
         self._base_url = base_url
-        self._timeout = timeout
+        if timeout is None:
+            self._timeout: httpx.Timeout | float = _default_timeout()
+        elif isinstance(timeout, (int, float)):
+            self._timeout = httpx.Timeout(float(timeout), connect=min(10.0, float(timeout)))
+        else:
+            self._timeout = timeout
 
         if transport is not None:
             self._transport = transport
