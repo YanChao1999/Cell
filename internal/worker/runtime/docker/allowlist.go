@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/YanChao1999/Cell/internal/worker/egress"
 	"github.com/YanChao1999/Cell/internal/worker/runtime"
 )
 
@@ -19,7 +20,10 @@ import (
 // Layout:
 //
 //	internal network ← Cell + proxy (alias cell-egress)
-//	bridge         ← proxy only (dial-out)
+//	bridge         ← proxy only (dial-out → optional CELL_EGRESS_UPSTREAM)
+//
+// Cell env always points at cell-egress. Corporate/user proxy is applied only on
+// the sidecar (CELL_EGRESS_UPSTREAM, else host HTTPS_PROXY/HTTP_PROXY).
 func startAllowlistEgress(ctx context.Context, opts runtime.CreateOpts) (netName, proxyName, auditHost string, proxyEnv map[string]string, err error) {
 	if len(opts.EgressAllow) == 0 {
 		return "", "", "", nil, fmt.Errorf("runtime/docker: network allowlist requires egress.allow hosts")
@@ -45,6 +49,9 @@ func startAllowlistEgress(ctx context.Context, opts runtime.CreateOpts) (netName
 		return "", "", "", nil, fmt.Errorf("runtime/docker: network create: %w\n%s", err, out)
 	}
 
+	upstreamRaw := egress.ResolveUpstream("")
+	upstream, needHostGateway := egress.RewriteUpstreamLoopback(upstreamRaw)
+
 	args := []string{
 		"run", "-d",
 		"--name", proxyName,
@@ -61,18 +68,26 @@ func startAllowlistEgress(ctx context.Context, opts runtime.CreateOpts) (netName
 		"-v", bin + ":/cell-egress:ro",
 		"-v", auditHost + ":/audit.jsonl",
 		"--entrypoint", "/cell-egress",
+	}
+	if needHostGateway {
+		args = append(args, "--add-host", "host.docker.internal:host-gateway")
+	}
+	args = append(args,
 		opts.Image,
 		"--listen", ":3128",
 		"--audit", "/audit.jsonl",
-	}
+	)
 	for _, h := range opts.EgressAllow {
 		args = append(args, "--allow", h)
+	}
+	if upstream != "" {
+		args = append(args, "--upstream", upstream)
 	}
 	if out, err := dockerOutput(ctx, args...); err != nil {
 		cleanupAllowlistEgress(context.Background(), "", netName)
 		return "", "", "", nil, fmt.Errorf("runtime/docker: egress proxy: %w\n%s", err, out)
 	}
-	// Give the proxy a path to the internet (Cell stays internal-only).
+	// Give the proxy a path to the internet / host proxy (Cell stays internal-only).
 	if out, err := dockerOutput(ctx, "network", "connect", "bridge", proxyName); err != nil {
 		cleanupAllowlistEgress(context.Background(), proxyName, netName)
 		return "", "", "", nil, fmt.Errorf("runtime/docker: connect proxy to bridge: %w\n%s", err, out)
@@ -86,8 +101,8 @@ func startAllowlistEgress(ctx context.Context, opts runtime.CreateOpts) (netName
 		"NO_PROXY":    "localhost,127.0.0.1",
 		"no_proxy":    "localhost,127.0.0.1",
 	}
-	log.Printf("runtime/docker: allowlist egress proxy=%s network=%s audit=%s allow=%v",
-		proxyName, netName, auditHost, opts.EgressAllow)
+	log.Printf("runtime/docker: allowlist egress proxy=%s network=%s audit=%s allow=%v upstream=%q",
+		proxyName, netName, auditHost, opts.EgressAllow, upstream)
 	return netName, proxyName, auditHost, proxyEnv, nil
 }
 

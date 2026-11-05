@@ -30,7 +30,13 @@ egress:
     - github.com
 ```
 
-Until the proxy exists, create with `network: allowlist` fails closed (never silently opens the network). Host fallback rejects `none` and `allowlist` because it cannot enforce them. When Docker is enabled, missing images and missing runtime entries never fall back to the host.
+**Upstream / corporate proxy:** Cells always use `HTTP(S)_PROXY=http://cell-egress:3128`. The sidecar alone may chain after allowlist checks:
+
+`Cell → cell-egress (allowlist + audit) → upstream → internet`
+
+Set on the **host** (picked up when starting the sidecar): `CELL_EGRESS_UPSTREAM` (preferred), else `HTTPS_PROXY` / `HTTP_PROXY`. Loopback upstreams (`127.0.0.1` / `localhost`) are rewritten to `host.docker.internal` with `--add-host host.docker.internal:host-gateway`.
+
+Host fallback rejects `none` and `allowlist` because it cannot enforce them. When Docker is enabled, missing images and missing runtime entries never fall back to the host.
 
 ## Security in design (not bolt-on)
 
@@ -38,8 +44,8 @@ Cell is an isolation product. Controls belong in the daemon and `Runtime` implem
 
 - Fail closed on unfinished or unenforceable policy (allowlist, host+`none`, Docker+empty image).
 - No host escape when Docker is the selected backend; no docker.sock; no privileged / host-namespace shortcuts.
-- Docker create path hardens by construction: non-root (`--user` daemon uid/gid), `no-new-privileges`, `--cap-drop=ALL` + minimal add-backs, read-only rootfs + tmpfs, per-Cell cache binds, RO same-path git repos mount. Remaining: allowlist egress proxy, warm trusted cache seed, microVM backend — see [TECH_DEBT.md](TECH_DEBT.md).
-- Stronger isolation later is another `Runtime` (microVM stub under `internal/worker/runtime/microvm`), not an SDK change. Egress allowlist is `internal/worker/egress` (stub; create still fail-closed).
+- Docker create path hardens by construction: non-root (`--user` daemon uid/gid), `no-new-privileges`, `--cap-drop=ALL` + minimal add-backs, read-only rootfs + tmpfs, per-Cell cache binds, RO same-path git repos mount. Remaining polish (microVM backend, CI wiring) — see [TECH_DEBT.md](TECH_DEBT.md).
+- Stronger isolation later is another `Runtime` (microVM stub under `internal/worker/runtime/microvm`), not an SDK change. Allowlist egress is `internal/worker/egress` + Docker sidecar.
 
 Placement order, already in `scheduler.Place`:
 

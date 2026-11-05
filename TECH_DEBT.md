@@ -20,7 +20,7 @@ Cell is an execution boundary for untrusted agent work. Security is not a later 
 - Non-root, `no-new-privileges`, cap-drop ALL + minimal, read-only rootfs + tmpfs.
 - Per-Cell caches; **trusted seed** via `cache.SeedCopy` (no hardlinks; refuses symlinks).
 - Git repos RO same-path bind.
-- **`network: allowlist`**: internal Docker network + `cell-egress` sidecar (`cmd/cell-egress`) with CONNECT/forward proxy, host allowlist, JSON audit log. Cell has no direct egress.
+- **`network: allowlist`**: internal Docker network + `cell-egress` sidecar (`cmd/cell-egress`) with CONNECT/forward proxy, host allowlist, JSON audit log. Cell has no direct egress. Optional **upstream chain** via `CELL_EGRESS_UPSTREAM` / host `HTTPS_PROXY` on the sidecar only (loopback → `host.docker.internal`).
 - MicroVM: fail-closed stub + `internal/worker/runtime/microvm/DESIGN.md` (not theater).
 
 ## Still open

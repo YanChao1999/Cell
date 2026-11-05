@@ -13,7 +13,7 @@ A **Cell** is a disposable execution workspace: checkout code, install deps, bui
 - **Source** — `git clone --mirror` under `~/.cell/repos/<hash>`, then `git worktree add` into the workspace
 - **Runtime** — Docker (`docker run -d` + `docker exec` + `docker rm -f`) or host fallback
 - **Caches** — host dirs under `--cache-dir` (default `~/.cell/cache`); Docker bind-mounts via env template `cache_mounts`; host fallback sets `GOMODCACHE` / `GOCACHE` / `PIP_CACHE_DIR` / `CCACHE_DIR` / …
-- **Environments** — YAML under `environments/` (image, limits, `cache_mounts`, optional `default_exec_timeout`, egress `network`: `default` \| `none` \| future `allowlist`)
+- **Environments** — YAML under `environments/` (image, limits, `cache_mounts`, optional `default_exec_timeout`, egress `network`: `default` \| `none` \| `allowlist`). Allowlist Cells use `cell-egress`; set `CELL_EGRESS_UPSTREAM` (or host `HTTPS_PROXY`) so the sidecar can reach the internet through a corporate proxy.
 - **Placement** — `prefer_local` → warm `cache_hints` → free capacity
 - **Sticky Exec** — meta maps `cell_id → worker_id`
 - **Disposable Cells**, durable caches / mirrors
@@ -154,4 +154,4 @@ Config: `.golangci.yml`.
 
 ## Tech debt
 
-Open gaps — host/git isolation leftovers, Docker sandbox hardening (non-root, caps, shared-cache trust), egress allowlist proxy, smoke/client timeouts — are tracked in [TECH_DEBT.md](TECH_DEBT.md). Security is enforced in the daemon/`Runtime` design, not as optional later folklore.
+Open gaps — microVM backend, CI wiring for docker/egress tests, smoke/client timeouts — are tracked in [TECH_DEBT.md](TECH_DEBT.md). Security is enforced in the daemon/`Runtime` design, not as optional later folklore.
