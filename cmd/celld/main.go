@@ -15,6 +15,7 @@ import (
 	ctrlapi "github.com/YanChao1999/Cell/internal/control/api"
 	"github.com/YanChao1999/Cell/internal/control/meta"
 	"github.com/YanChao1999/Cell/internal/control/reaper"
+	"github.com/YanChao1999/Cell/internal/control/registry"
 	"github.com/YanChao1999/Cell/internal/control/scheduler"
 	"github.com/YanChao1999/Cell/internal/worker/cache"
 	"github.com/YanChao1999/Cell/internal/worker/envtemplate"
@@ -181,6 +182,19 @@ func runServe(args []string) error {
 	sched := scheduler.New([]workerapi.Worker{lw}, *workerID)
 	srv := ctrlapi.New(store, sched)
 
+	// Phase 5 foundation: register local worker and heartbeat into the registry.
+	if reg := srv.Registry(); reg != nil {
+		cap := lw.Capacity()
+		_, _ = reg.Register(registry.RegisterRequest{
+			ID:        lw.ID(),
+			Endpoint:  "unix://" + *socket,
+			MaxCells:  cap.MaxCells,
+			UsedCells: cap.UsedCells,
+			CacheKeys: lw.CacheIndex().Keys(),
+		})
+		go heartbeatLocalWorker(ctx, reg, lw, 15*time.Second)
+	}
+
 	rp := reaper.New(store, sched, srv.DestroyCell, 15*time.Second)
 	go rp.Run(ctx)
 
@@ -196,5 +210,29 @@ func runServe(args []string) error {
 		return nil
 	case err := <-errCh:
 		return err
+	}
+}
+
+func heartbeatLocalWorker(ctx context.Context, reg *registry.Registry, w workerapi.Worker, every time.Duration) {
+	t := time.NewTicker(every)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			cap := w.Capacity()
+			var keys []string
+			if idx := w.CacheIndex(); idx != nil {
+				keys = idx.Keys()
+			}
+			if _, err := reg.Heartbeat(w.ID(), registry.HeartbeatRequest{
+				UsedCells: cap.UsedCells,
+				MaxCells:  cap.MaxCells,
+				CacheKeys: keys,
+			}); err != nil {
+				log.Printf("celld: worker heartbeat: %v", err)
+			}
+		}
 	}
 }

@@ -16,17 +16,32 @@ type CacheMount struct {
 	Container string
 }
 
+// SetupStep is one create-time bootstrap command, with optional skip conditions.
+//
+//	setup:
+//	  - go version
+//	  - run: pip install -r requirements.txt
+//	    if: test -f requirements.txt
+//	  - run: npm ci
+//	    unless: test -d node_modules
+type SetupStep struct {
+	Run    string // shell command (required)
+	If     string // run step only when this command exits 0
+	Unless string // run step only when this command exits non-zero
+}
+
 // Template is a resolved environment definition.
 type Template struct {
 	Name               string
 	Description        string
 	Image              string
 	CacheMounts        []CacheMount
-	Setup              []string
+	Setup              []SetupStep
+	SetupTimeout       string // optional; falls back to DefaultExecTimeout
 	Env                map[string]string
 	DefaultLimits      api.Limits
 	Network            string   // default | none | allowlist
-	EgressAllow        []string // hostnames when network=allowlist (future proxy)
+	EgressAllow        []string // hostnames when network=allowlist
 	DefaultExecTimeout string   // optional duration string, e.g. "30m", "2h"
 }
 
@@ -105,6 +120,9 @@ func Parse(data []byte) (*Template, error) {
 			i++
 		case "default_exec_timeout":
 			t.DefaultExecTimeout = unquote(val)
+			i++
+		case "setup_timeout":
+			t.SetupTimeout = unquote(val)
 			i++
 		case "egress":
 			// Optional block for future allowlist proxy:
@@ -201,7 +219,7 @@ func Parse(data []byte) (*Template, error) {
 			}
 			t.CacheMounts = mounts
 		case "setup":
-			var setup []string
+			var setup []SetupStep
 			i++
 			for i < len(lines) {
 				l := lines[i]
@@ -209,14 +227,60 @@ func Parse(data []byte) (*Template, error) {
 					i++
 					continue
 				}
-				if countIndent(l) == 0 {
+				ind := countIndent(l)
+				if ind == 0 {
 					break
 				}
 				trim := strings.TrimSpace(l)
-				if strings.HasPrefix(trim, "-") {
-					setup = append(setup, unquote(strings.TrimSpace(strings.TrimPrefix(trim, "-"))))
+				if !strings.HasPrefix(trim, "-") {
+					return nil, fmt.Errorf("setup: expected list item at line %d", i+1)
+				}
+				itemRest := strings.TrimSpace(strings.TrimPrefix(trim, "-"))
+				step := SetupStep{}
+				if itemRest != "" {
+					k, v, ok := splitKV(itemRest)
+					switch {
+					case ok && k == "run":
+						step.Run = unquote(v)
+					case ok && (k == "if" || k == "unless"):
+						return nil, fmt.Errorf("setup: %q before run at line %d", k, i+1)
+					default:
+						// Bare command string (e.g. "- go version").
+						step.Run = unquote(itemRest)
+					}
 				}
 				i++
+				for i < len(lines) {
+					nl := lines[i]
+					if isBlankOrComment(nl) {
+						i++
+						continue
+					}
+					nind := countIndent(nl)
+					if nind <= ind {
+						break
+					}
+					nk, nv, ok := splitKV(strings.TrimSpace(nl))
+					if !ok {
+						return nil, fmt.Errorf("setup: bad field at line %d", i+1)
+					}
+					nv = unquote(nv)
+					switch nk {
+					case "run":
+						step.Run = nv
+					case "if":
+						step.If = nv
+					case "unless":
+						step.Unless = nv
+					default:
+						return nil, fmt.Errorf("setup: unsupported field %q at line %d", nk, i+1)
+					}
+					i++
+				}
+				if strings.TrimSpace(step.Run) == "" {
+					return nil, fmt.Errorf("setup: empty run at line %d", i)
+				}
+				setup = append(setup, step)
 			}
 			t.Setup = setup
 		case "env":

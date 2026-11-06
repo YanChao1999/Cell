@@ -10,8 +10,12 @@ cache_mounts:
     # Under workspace-friendly path (Cell runs non-root; avoid /root).
     container: /workspace/.cache/go-build
 
+setup_timeout: 5m
 setup:
   - go version
+  # Example conditional (no-op here): only run when go.mod exists
+  # - run: go mod download
+  #   if: test -f go.mod
 
 env:
   GO111MODULE: "on"

@@ -201,12 +201,23 @@ func (w *LocalWorker) CreateCell(ctx context.Context, req api.CreateCellRequest)
 		return nil, err
 	}
 
+	w.mu.Lock()
+	cell.DiskLimit = limits.Disk
+	w.mu.Unlock()
+
 	if len(setup) > 0 {
 		w.mu.Lock()
 		cell.Status = "setup"
 		w.mu.Unlock()
-		setupTimeout := w.defaultExecTimeout(req.Environment)
+		setupTimeout := w.setupTimeoutSeconds(req.Environment)
 		if err := w.runSetup(ctx, id, ws, setup, setupTimeout); err != nil {
+			_ = w.rt.Destroy(ctx, id)
+			_ = w.source.Release(ctx, ws)
+			_ = os.RemoveAll(ws)
+			w.removeCell(id)
+			return nil, err
+		}
+		if err := checkWorkspaceDisk(ws, limits.Disk); err != nil {
 			_ = w.rt.Destroy(ctx, id)
 			_ = w.source.Release(ctx, ws)
 			_ = os.RemoveAll(ws)
@@ -221,24 +232,46 @@ func (w *LocalWorker) CreateCell(ctx context.Context, req api.CreateCellRequest)
 	return cell, nil
 }
 
-func (w *LocalWorker) runSetup(ctx context.Context, cellID, workspace string, cmds []string, timeoutSeconds int) error {
-	for i, cmd := range cmds {
-		cmd = strings.TrimSpace(cmd)
-		if cmd == "" {
+func (w *LocalWorker) runSetup(ctx context.Context, cellID, workspace string, steps []envtemplate.SetupStep, timeoutSeconds int) error {
+	for i, step := range steps {
+		run := strings.TrimSpace(step.Run)
+		if run == "" {
 			continue
+		}
+		if cond := strings.TrimSpace(step.If); cond != "" {
+			res, err := w.rt.Exec(ctx, runtime.ExecOpts{
+				CellID: cellID, Workspace: workspace, Command: cond, TimeoutSeconds: timeoutSeconds,
+			})
+			if err != nil {
+				return fmt.Errorf("manager: setup[%d] if %q: %w", i, cond, err)
+			}
+			if res != nil && res.ExitCode != 0 {
+				continue // condition false → skip
+			}
+		}
+		if cond := strings.TrimSpace(step.Unless); cond != "" {
+			res, err := w.rt.Exec(ctx, runtime.ExecOpts{
+				CellID: cellID, Workspace: workspace, Command: cond, TimeoutSeconds: timeoutSeconds,
+			})
+			if err != nil {
+				return fmt.Errorf("manager: setup[%d] unless %q: %w", i, cond, err)
+			}
+			if res != nil && res.ExitCode == 0 {
+				continue // unless true → skip
+			}
 		}
 		res, err := w.rt.Exec(ctx, runtime.ExecOpts{
 			CellID:         cellID,
 			Workspace:      workspace,
-			Command:        cmd,
+			Command:        run,
 			TimeoutSeconds: timeoutSeconds,
 		})
 		if err != nil {
-			return fmt.Errorf("manager: setup[%d] %q: %w", i, cmd, err)
+			return fmt.Errorf("manager: setup[%d] %q: %w", i, run, err)
 		}
 		if res != nil && res.ExitCode != 0 {
 			return fmt.Errorf("manager: setup[%d] %q: exit %d\nstdout:\n%s\nstderr:\n%s",
-				i, cmd, res.ExitCode, res.Stdout, res.Stderr)
+				i, run, res.ExitCode, res.Stdout, res.Stderr)
 		}
 	}
 	return nil
@@ -251,7 +284,7 @@ func (w *LocalWorker) resolveEnv(req api.CreateCellRequest) (
 	mounts []cache.Mount,
 	network string,
 	egressAllow []string,
-	setup []string,
+	setup []envtemplate.SetupStep,
 	err error,
 ) {
 	limits = req.Limits
@@ -269,7 +302,7 @@ func (w *LocalWorker) resolveEnv(req api.CreateCellRequest) (
 	env = cloneStringMap(tmpl.Env)
 	network = tmpl.Network
 	egressAllow = append([]string(nil), tmpl.EgressAllow...)
-	setup = append([]string(nil), tmpl.Setup...)
+	setup = append([]envtemplate.SetupStep(nil), tmpl.Setup...)
 	if limits.CPU == "" {
 		limits.CPU = tmpl.DefaultLimits.CPU
 	}
@@ -301,27 +334,34 @@ func (w *LocalWorker) Exec(ctx context.Context, cellID string, req api.ExecReque
 	if !ok {
 		return nil, fmt.Errorf("cell %s not found on worker %s", cellID, w.id)
 	}
+	if err := checkWorkspaceDisk(cell.Workspace, cell.DiskLimit); err != nil {
+		return nil, err
+	}
 	timeout := req.TimeoutSeconds
 	if timeout <= 0 {
 		timeout = w.defaultExecTimeout(cell.Environment)
 	}
-	return w.rt.Exec(ctx, runtime.ExecOpts{
+	res, err := w.rt.Exec(ctx, runtime.ExecOpts{
 		CellID:         cellID,
 		Workspace:      cell.Workspace,
 		Command:        req.Command,
 		TimeoutSeconds: timeout,
 	})
+	if err != nil {
+		return nil, err
+	}
+	if diskErr := checkWorkspaceDisk(cell.Workspace, cell.DiskLimit); diskErr != nil {
+		return nil, diskErr
+	}
+	return res, nil
 }
 
-func (w *LocalWorker) defaultExecTimeout(environment string) int {
-	if environment == "" || w.envs == nil {
+func (w *LocalWorker) parseTimeoutSeconds(raw string) int {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
 		return 0
 	}
-	tmpl, err := w.envs.Load(environment)
-	if err != nil || tmpl.DefaultExecTimeout == "" {
-		return 0
-	}
-	d, err := time.ParseDuration(tmpl.DefaultExecTimeout)
+	d, err := time.ParseDuration(raw)
 	if err != nil || d <= 0 {
 		return 0
 	}
@@ -330,6 +370,31 @@ func (w *LocalWorker) defaultExecTimeout(environment string) int {
 		secs = 1
 	}
 	return secs
+}
+
+func (w *LocalWorker) defaultExecTimeout(environment string) int {
+	if environment == "" || w.envs == nil {
+		return 0
+	}
+	tmpl, err := w.envs.Load(environment)
+	if err != nil {
+		return 0
+	}
+	return w.parseTimeoutSeconds(tmpl.DefaultExecTimeout)
+}
+
+func (w *LocalWorker) setupTimeoutSeconds(environment string) int {
+	if environment == "" || w.envs == nil {
+		return 0
+	}
+	tmpl, err := w.envs.Load(environment)
+	if err != nil {
+		return 0
+	}
+	if secs := w.parseTimeoutSeconds(tmpl.SetupTimeout); secs > 0 {
+		return secs
+	}
+	return w.parseTimeoutSeconds(tmpl.DefaultExecTimeout)
 }
 
 func (w *LocalWorker) DestroyCell(ctx context.Context, cellID string) error {

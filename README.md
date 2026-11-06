@@ -30,7 +30,9 @@ go build -o bin/celld ./cmd/celld
 go build -o bin/cell ./cmd/cell
 # Required for network: allowlist (Docker sidecar proxy)
 CGO_ENABLED=0 go build -o bin/cell-egress ./cmd/cell-egress
-go test ./internal/worker/cache/ ./internal/worker/envtemplate/ ./internal/worker/egress/ ./internal/worker/runtime/docker/
+# Optional dedicated sidecar image (recommended for allowlist on arbitrary Cell images)
+# ./scripts/build-egress-image.sh   # tags CELL_EGRESS_IMAGE or cell-egress:local
+go test ./internal/worker/cache/ ./internal/worker/envtemplate/ ./internal/worker/egress/ ./internal/worker/runtime/docker/ ./internal/control/registry/
 ```
 
 ## Run (`mode=all`)
@@ -154,4 +156,4 @@ Config: `.golangci.yml`.
 
 ## Tech debt
 
-Open gaps — microVM backend, userns/disk polish, Phase 5 cluster — are tracked in [TECH_DEBT.md](TECH_DEBT.md). Security is enforced in the daemon/`Runtime` design, not as optional later folklore.
+Open gaps — microVM, remote worker RPC / cross-node cache, stronger userns — are tracked in [TECH_DEBT.md](TECH_DEBT.md). Security is enforced in the daemon/`Runtime` design, not as optional later folklore.

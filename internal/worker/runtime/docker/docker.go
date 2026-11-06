@@ -437,12 +437,23 @@ func dockerRunArgs(opts runtime.CreateOpts, network, name string) ([]string, err
 		"--user", fmt.Sprintf("%d:%d", uid, gid),
 		"--security-opt", "no-new-privileges:true",
 		"--cap-drop", "ALL",
+		"--cgroupns", "private",
 		"--read-only",
 		"--tmpfs", "/tmp:rw,nosuid,nodev,exec,size=1g",
 		"--tmpfs", "/var/tmp:rw,nosuid,nodev,exec,size=256m",
 		"-v", opts.Workspace + ":/workspace",
 		"-w", "/workspace",
 		"-e", "HOME=/workspace",
+	}
+	// User namespace: never force --userns=host (that disables daemon userns-remap).
+	// CELL_DOCKER_USERNS=host is an explicit escape hatch for broken volume ownership.
+	switch strings.TrimSpace(os.Getenv("CELL_DOCKER_USERNS")) {
+	case "host":
+		args = append(args, "--userns", "host")
+	case "", "remap", "private":
+		// Default: honor daemon userns-remap when configured; keep --user match.
+	default:
+		return nil, fmt.Errorf("runtime/docker: unsupported CELL_DOCKER_USERNS=%q (want host|remap|private|empty)", os.Getenv("CELL_DOCKER_USERNS"))
 	}
 	// Minimal capabilities needed for common language toolchains inside the Cell.
 	// Never add SYS_ADMIN, NET_ADMIN, SYS_PTRACE, SYS_MODULE, or privileged.

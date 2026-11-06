@@ -22,15 +22,13 @@ import (
 //	internal network ← Cell + proxy (alias cell-egress)
 //	bridge         ← proxy only (dial-out → optional CELL_EGRESS_UPSTREAM)
 //
-// Cell env always points at cell-egress. Corporate/user proxy is applied only on
-// the sidecar (CELL_EGRESS_UPSTREAM, else host HTTPS_PROXY/HTTP_PROXY).
+// Prefers a dedicated sidecar image (CELL_EGRESS_IMAGE, default cell-egress:local)
+// so allowlist works when the Cell app image cannot run a host-mounted binary.
+// Falls back to mounting bin/cell-egress into the Cell image when the dedicated
+// image is missing.
 func startAllowlistEgress(ctx context.Context, opts runtime.CreateOpts) (netName, proxyName, auditHost string, proxyEnv map[string]string, err error) {
 	if len(opts.EgressAllow) == 0 {
 		return "", "", "", nil, fmt.Errorf("runtime/docker: network allowlist requires egress.allow hosts")
-	}
-	bin, err := lookPathEgress()
-	if err != nil {
-		return "", "", "", nil, err
 	}
 	safe := strings.ReplaceAll(opts.CellID, "/", "-")
 	netName = "cell-eg-" + safe
@@ -52,6 +50,12 @@ func startAllowlistEgress(ctx context.Context, opts runtime.CreateOpts) (netName
 	upstreamRaw := egress.ResolveUpstream("")
 	upstream, needHostGateway := egress.RewriteUpstreamLoopback(upstreamRaw)
 
+	sidecar, err := resolveEgressSidecar(ctx, opts.Image)
+	if err != nil {
+		cleanupAllowlistEgress(context.Background(), "", netName)
+		return "", "", "", nil, err
+	}
+
 	args := []string{
 		"run", "-d",
 		"--name", proxyName,
@@ -65,15 +69,18 @@ func startAllowlistEgress(ctx context.Context, opts runtime.CreateOpts) (netName
 		"--cap-add", "NET_BIND_SERVICE",
 		"--read-only",
 		"--tmpfs", "/tmp:rw,nosuid,nodev,size=64m",
-		"-v", bin + ":/cell-egress:ro",
 		"-v", auditHost + ":/audit.jsonl",
-		"--entrypoint", "/cell-egress",
 	}
 	if needHostGateway {
 		args = append(args, "--add-host", "host.docker.internal:host-gateway")
 	}
-	args = append(args,
-		opts.Image,
+	if sidecar.bindBinary != "" {
+		args = append(args,
+			"-v", sidecar.bindBinary+":/cell-egress:ro",
+			"--entrypoint", "/cell-egress",
+		)
+	}
+	args = append(args, sidecar.image,
 		"--listen", ":3128",
 		"--audit", "/audit.jsonl",
 	)
@@ -101,9 +108,38 @@ func startAllowlistEgress(ctx context.Context, opts runtime.CreateOpts) (netName
 		"NO_PROXY":    "localhost,127.0.0.1",
 		"no_proxy":    "localhost,127.0.0.1",
 	}
-	log.Printf("runtime/docker: allowlist egress proxy=%s network=%s audit=%s allow=%v upstream=%q",
-		proxyName, netName, auditHost, opts.EgressAllow, upstream)
+	log.Printf("runtime/docker: allowlist egress proxy=%s network=%s audit=%s allow=%v upstream=%q image=%s dedicated=%v",
+		proxyName, netName, auditHost, opts.EgressAllow, upstream, sidecar.image, sidecar.bindBinary == "")
 	return netName, proxyName, auditHost, proxyEnv, nil
+}
+
+type egressSidecar struct {
+	image      string
+	bindBinary string // non-empty → mount host binary into image
+}
+
+func resolveEgressSidecar(ctx context.Context, cellImage string) (egressSidecar, error) {
+	img := strings.TrimSpace(os.Getenv("CELL_EGRESS_IMAGE"))
+	if img == "" {
+		img = "cell-egress:local"
+	}
+	if dockerImageExists(ctx, img) {
+		return egressSidecar{image: img}, nil
+	}
+	bin, err := lookPathEgress()
+	if err != nil {
+		return egressSidecar{}, fmt.Errorf("runtime/docker: dedicated egress image %q not found and %w (build with: ./scripts/build-egress-image.sh)", img, err)
+	}
+	if strings.TrimSpace(cellImage) == "" {
+		return egressSidecar{}, fmt.Errorf("runtime/docker: egress fallback needs Cell image to mount cell-egress")
+	}
+	log.Printf("runtime/docker: egress image %q missing; falling back to bind-mount %s into %s", img, bin, cellImage)
+	return egressSidecar{image: cellImage, bindBinary: bin}, nil
+}
+
+func dockerImageExists(ctx context.Context, image string) bool {
+	err := dockerRun(ctx, "image", "inspect", image)
+	return err == nil
 }
 
 func cleanupAllowlistEgress(ctx context.Context, proxyName, netName string) {
@@ -149,7 +185,7 @@ func lookPathEgress() (string, error) {
 	if p, err := exec.LookPath("cell-egress"); err == nil {
 		return p, nil
 	}
-	return "", fmt.Errorf("runtime/docker: cell-egress binary not found (build with: go build -o bin/cell-egress ./cmd/cell-egress)")
+	return "", fmt.Errorf("cell-egress binary not found (build with: go build -o bin/cell-egress ./cmd/cell-egress)")
 }
 
 func dockerOutput(ctx context.Context, args ...string) ([]byte, error) {
