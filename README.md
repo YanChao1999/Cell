@@ -154,4 +154,4 @@ Config: `.golangci.yml`.
 
 ## Tech debt
 
-Open gaps — microVM backend, CI wiring for docker/egress tests, smoke/client timeouts — are tracked in [TECH_DEBT.md](TECH_DEBT.md). Security is enforced in the daemon/`Runtime` design, not as optional later folklore.
+Open gaps — microVM backend, userns/disk polish, Phase 5 cluster — are tracked in [TECH_DEBT.md](TECH_DEBT.md). Security is enforced in the daemon/`Runtime` design, not as optional later folklore.

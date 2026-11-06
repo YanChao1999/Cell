@@ -247,4 +247,6 @@ sequenceDiagram
 
 ## Open follow-ups
 
-Accepted debt (including Docker sandbox hardening and egress allowlist proxy) is in [TECH_DEBT.md](TECH_DEBT.md). Security stays in design and in the runtime software path. Phase 5 is still the cluster: worker register and heartbeat, `prefer_local` across peers, and optional cross-node cache pull.
+Create runs environment template `setup` commands before the Cell is marked ready (failure rolls back). CLI/SDK omit short client read deadlines so `default_exec_timeout` can complete; override with `CELL_CLIENT_TIMEOUT`.
+
+Accepted debt is in [TECH_DEBT.md](TECH_DEBT.md). Security stays in design and in the runtime software path. Phase 5 (cluster) waits until single-node UX is solid.

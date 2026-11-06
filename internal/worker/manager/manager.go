@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -156,7 +157,7 @@ func (w *LocalWorker) CreateCell(ctx context.Context, req api.CreateCellRequest)
 		return nil, err
 	}
 
-	image, limits, envVars, mounts, network, egressAllow, err := w.resolveEnv(req)
+	image, limits, envVars, mounts, network, egressAllow, setup, err := w.resolveEnv(req)
 	if err != nil {
 		_ = w.source.Release(ctx, ws)
 		_ = os.RemoveAll(ws)
@@ -200,10 +201,47 @@ func (w *LocalWorker) CreateCell(ctx context.Context, req api.CreateCellRequest)
 		return nil, err
 	}
 
+	if len(setup) > 0 {
+		w.mu.Lock()
+		cell.Status = "setup"
+		w.mu.Unlock()
+		setupTimeout := w.defaultExecTimeout(req.Environment)
+		if err := w.runSetup(ctx, id, ws, setup, setupTimeout); err != nil {
+			_ = w.rt.Destroy(ctx, id)
+			_ = w.source.Release(ctx, ws)
+			_ = os.RemoveAll(ws)
+			w.removeCell(id)
+			return nil, err
+		}
+	}
+
 	w.mu.Lock()
 	cell.Status = "ready"
 	w.mu.Unlock()
 	return cell, nil
+}
+
+func (w *LocalWorker) runSetup(ctx context.Context, cellID, workspace string, cmds []string, timeoutSeconds int) error {
+	for i, cmd := range cmds {
+		cmd = strings.TrimSpace(cmd)
+		if cmd == "" {
+			continue
+		}
+		res, err := w.rt.Exec(ctx, runtime.ExecOpts{
+			CellID:         cellID,
+			Workspace:      workspace,
+			Command:        cmd,
+			TimeoutSeconds: timeoutSeconds,
+		})
+		if err != nil {
+			return fmt.Errorf("manager: setup[%d] %q: %w", i, cmd, err)
+		}
+		if res != nil && res.ExitCode != 0 {
+			return fmt.Errorf("manager: setup[%d] %q: exit %d\nstdout:\n%s\nstderr:\n%s",
+				i, cmd, res.ExitCode, res.Stdout, res.Stderr)
+		}
+	}
+	return nil
 }
 
 func (w *LocalWorker) resolveEnv(req api.CreateCellRequest) (
@@ -213,23 +251,25 @@ func (w *LocalWorker) resolveEnv(req api.CreateCellRequest) (
 	mounts []cache.Mount,
 	network string,
 	egressAllow []string,
+	setup []string,
 	err error,
 ) {
 	limits = req.Limits
 	if req.Environment == "" {
-		return "", limits, nil, nil, "", nil, nil
+		return "", limits, nil, nil, "", nil, nil, nil
 	}
 	if w.envs == nil {
-		return "", limits, nil, nil, "", nil, fmt.Errorf("manager: environment %q requested but no environments dir configured", req.Environment)
+		return "", limits, nil, nil, "", nil, nil, fmt.Errorf("manager: environment %q requested but no environments dir configured", req.Environment)
 	}
 	tmpl, err := w.envs.Load(req.Environment)
 	if err != nil {
-		return "", limits, nil, nil, "", nil, err
+		return "", limits, nil, nil, "", nil, nil, err
 	}
 	image = tmpl.Image
 	env = cloneStringMap(tmpl.Env)
 	network = tmpl.Network
 	egressAllow = append([]string(nil), tmpl.EgressAllow...)
+	setup = append([]string(nil), tmpl.Setup...)
 	if limits.CPU == "" {
 		limits.CPU = tmpl.DefaultLimits.CPU
 	}
@@ -248,10 +288,10 @@ func (w *LocalWorker) resolveEnv(req api.CreateCellRequest) (
 		}
 		mounts, err = w.cache.ResolveMounts(keys, ctrs)
 		if err != nil {
-			return "", limits, nil, nil, "", nil, err
+			return "", limits, nil, nil, "", nil, nil, err
 		}
 	}
-	return image, limits, env, mounts, network, egressAllow, nil
+	return image, limits, env, mounts, network, egressAllow, setup, nil
 }
 
 func (w *LocalWorker) Exec(ctx context.Context, cellID string, req api.ExecRequest) (*api.ExecResult, error) {
