@@ -34,6 +34,7 @@ type Cell struct {
 	Workspace   string
 	Environment string
 	Status      string
+	DiskLimit   string // template/request disk cap (portable host-side enforcement)
 }
 
 // Worker is the interface implemented by LocalWorker and remote workers.

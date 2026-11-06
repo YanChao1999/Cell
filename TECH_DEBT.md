@@ -1,6 +1,6 @@
 # Tech debt
 
-Follow-ups from security hardening. Do not drop remaining items when starting Phase 5 cluster work.
+Follow-ups from security hardening. Do not drop remaining items when starting deeper Phase 5 work.
 
 ## Principle: security in design, in software
 
@@ -18,32 +18,32 @@ Cell is an execution boundary for untrusted agent work. Security is not a later 
 
 ### PR #3 — Docker sandbox + warm seed + allowlist proxy
 - Non-root, `no-new-privileges`, cap-drop ALL + minimal, read-only rootfs + tmpfs.
-- Per-Cell caches; **trusted seed** via `cache.SeedCopy` (no hardlinks; refuses symlinks).
+- Per-Cell caches; **trusted seed** via `cache.SeedCopy`.
 - Git repos RO same-path bind.
-- **`network: allowlist`**: internal Docker network + `cell-egress` sidecar with CONNECT/forward proxy, host allowlist, JSON audit log. Optional **upstream chain** via `CELL_EGRESS_UPSTREAM` / host `HTTPS_PROXY` on the sidecar only.
+- **`network: allowlist`**: `cell-egress` sidecar, audit, optional upstream chain.
 
-### Single-node UX
-- Template **`setup`** runs on create (fail → destroy + rollback).
-- CLI/SDK client timeouts no longer clip template budgets (`CELL_CLIENT_TIMEOUT` override).
-- Smoke uses ephemeral `--cell-home` by default; builds `cell-egress`.
-- Per-repo git **mirror flock** during clone/fetch.
-- Disk → Docker `--storage-opt size=` **opt-in** (`CELL_DOCKER_DISK_STORAGE_OPT=1`; most hosts lack overlay2+xfs pquota).
-- CI builds `cell-egress` and runs worker package tests (cache/env/egress/manager/git/docker).
+### PR #4 — Single-node UX
+- Template **`setup`** on create; CLI/SDK long-op timeouts; smoke temp `--cell-home`; git mirror flock; CI egress/worker tests.
+
+### Setup / egress / hardening / Phase 5 foundation (this branch)
+- Richer setup: `setup_timeout`, conditional steps (`if` / `unless`).
+- Dedicated egress image (`docker/cell-egress`, `CELL_EGRESS_IMAGE`, `./scripts/build-egress-image.sh`); bind-mount fallback if image missing.
+- Portable disk: host workspace `du` enforcement; storage-opt still opt-in via `CELL_DOCKER_DISK_STORAGE_OPT=1`.
+- Userns: `--cgroupns=private`; do not force `--userns=host` (escape hatch `CELL_DOCKER_USERNS=host`).
+- Phase 5 foundation: in-memory worker **registry** + register/heartbeat/list API; local worker self-registers and heartbeats. Placement still uses in-process scheduler workers; **cross-node cache pull** not done.
 
 ## Still open
 
 ### MicroVM backend (real VMM)
-- Firecracker / Cloud Hypervisor / QEMU behind `Runtime` — needs VMM binary, guest kernel/rootfs, vsock/tap, jailer. See `microvm/DESIGN.md`. Do not mark done until Create boots a VM.
+- Firecracker / Cloud Hypervisor / QEMU behind `Runtime`. See `microvm/DESIGN.md`.
 
 ### Hardening polish
-- User-namespace remapping beyond uid/gid match.
 - Seed size/latency tuning; optional content hashing of seeded files.
-- Proxy sidecar image choice when Cell image cannot run the static/host `cell-egress` binary.
-- Portable disk enforcement without storage-opt / pquota (or document operator requirements).
+- Stronger userns than daemon remap + `--user` (rootless/podman paths).
+- Harder disk caps (project quotas) where operators can enable them.
 
-### Usability / ops (remaining)
-- Richer setup (conditional steps, setup-only timeout field separate from exec).
+### Phase 5 (remaining)
+- Remote worker transport (RPC over registered endpoints).
+- Scheduler place across registry peers (not only local process workers).
+- Optional cross-node cache pull.
 - Cross-platform mirror lock if Windows workers appear.
-
-### Phase 5 (cluster) — after single-node UX is solid
-- Worker register and heartbeat, `prefer_local` across peers, optional cross-node cache pull.

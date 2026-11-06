@@ -55,7 +55,7 @@ network: default
 	if len(tmpl.CacheMounts) != 2 || tmpl.CacheMounts[0].Host != "go-mod" {
 		t.Fatalf("cache_mounts: %+v", tmpl.CacheMounts)
 	}
-	if len(tmpl.Setup) != 1 || tmpl.Setup[0] != "go version" {
+	if len(tmpl.Setup) != 1 || tmpl.Setup[0].Run != "go version" {
 		t.Fatalf("setup: %+v", tmpl.Setup)
 	}
 	if tmpl.DefaultExecTimeout != "30m" {
@@ -63,6 +63,37 @@ network: default
 	}
 	if tmpl.Network != "default" {
 		t.Fatalf("network: %q", tmpl.Network)
+	}
+}
+
+func TestParseSetupConditionalsAndTimeout(t *testing.T) {
+	data := []byte(`name: rich
+setup_timeout: 15m
+setup:
+  - go version
+  - run: pip install -r requirements.txt
+    if: test -f requirements.txt
+  - run: npm ci
+    unless: test -d node_modules
+`)
+	tmpl, err := Parse(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tmpl.SetupTimeout != "15m" {
+		t.Fatalf("setup_timeout: %q", tmpl.SetupTimeout)
+	}
+	if len(tmpl.Setup) != 3 {
+		t.Fatalf("setup len: %+v", tmpl.Setup)
+	}
+	if tmpl.Setup[0].Run != "go version" || tmpl.Setup[0].If != "" {
+		t.Fatalf("step0: %+v", tmpl.Setup[0])
+	}
+	if tmpl.Setup[1].Run != "pip install -r requirements.txt" || tmpl.Setup[1].If != "test -f requirements.txt" {
+		t.Fatalf("step1: %+v", tmpl.Setup[1])
+	}
+	if tmpl.Setup[2].Run != "npm ci" || tmpl.Setup[2].Unless != "test -d node_modules" {
+		t.Fatalf("step2: %+v", tmpl.Setup[2])
 	}
 }
 

@@ -247,6 +247,8 @@ sequenceDiagram
 
 ## Open follow-ups
 
-Create runs environment template `setup` commands before the Cell is marked ready (failure rolls back). CLI/SDK omit short client read deadlines so `default_exec_timeout` can complete; override with `CELL_CLIENT_TIMEOUT`.
+Create runs environment template `setup` (optional `setup_timeout`, `if` / `unless` conditionals) before ready; failure rolls back. CLI/SDK omit short client read deadlines so `default_exec_timeout` can complete; override with `CELL_CLIENT_TIMEOUT`.
 
-Accepted debt is in [TECH_DEBT.md](TECH_DEBT.md). Security stays in design and in the runtime software path. Phase 5 (cluster) waits until single-node UX is solid.
+Allowlist prefers dedicated image `CELL_EGRESS_IMAGE` / `cell-egress:local` (`docker/cell-egress`); falls back to bind-mounting `cell-egress` into the Cell image. Portable disk caps use host workspace size checks; Docker `storage-opt` remains opt-in.
+
+Phase 5 foundation: `POST /v1/workers/register`, `POST /v1/workers/{id}/heartbeat`, `GET /v1/workers`. Local `celld` self-registers. Remote RPC placement and cross-node cache pull remain open — see [TECH_DEBT.md](TECH_DEBT.md).

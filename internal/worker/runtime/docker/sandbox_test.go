@@ -29,6 +29,7 @@ func TestDockerRunArgsHardening(t *testing.T) {
 		"--user",
 		"--security-opt", "no-new-privileges:true",
 		"--cap-drop", "ALL",
+		"--cgroupns", "private",
 		"--read-only",
 		"--tmpfs",
 		"--network", "none",

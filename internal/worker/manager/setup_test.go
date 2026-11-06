@@ -165,4 +165,45 @@ func TestCreateNoSetup(t *testing.T) {
 	}
 }
 
+func TestCreateSetupConditionals(t *testing.T) {
+	root := t.TempDir()
+	envDir := filepath.Join(root, "envs")
+	_ = os.MkdirAll(envDir, 0o755)
+	writeEnv(t, envDir, "cond", `
+name: cond
+setup_timeout: 30s
+setup:
+  - run: echo install
+    if: true
+  - run: echo skip-me
+    if: false
+  - run: echo unless-run
+    unless: false
+  - run: echo unless-skip
+    unless: true
+`)
+	rt := &fakeRT{}
+	w, err := New(Options{
+		WorkspacesRoot: filepath.Join(root, "ws"),
+		CacheDir:       filepath.Join(root, "cache"),
+		Runtime:        rt,
+		Source:         git.NewStub(),
+		EnvLoader:      envtemplate.New(envDir),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Make condition commands succeed/fail via failCmd on "false"
+	rt.failCmd = "false"
+	rt.failExit = 1
+	if _, err := w.CreateCell(context.Background(), api.CreateCellRequest{Environment: "cond"}); err != nil {
+		t.Fatal(err)
+	}
+	// Expected sequence: if true (ok), echo install; if false (fail→skip); unless false (fail→run); echo unless-run; unless true (ok→skip)
+	want := []string{"true", "echo install", "false", "false", "echo unless-run", "true"}
+	if strings.Join(rt.cmds, ",") != strings.Join(want, ",") {
+		t.Fatalf("cmds=%v want=%v", rt.cmds, want)
+	}
+}
+
 var _ runtime.Runtime = (*fakeRT)(nil)

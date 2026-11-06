@@ -16,6 +16,7 @@ import (
 
 	cellapi "github.com/YanChao1999/Cell/api"
 	"github.com/YanChao1999/Cell/internal/control/meta"
+	"github.com/YanChao1999/Cell/internal/control/registry"
 	"github.com/YanChao1999/Cell/internal/control/scheduler"
 )
 
@@ -25,15 +26,24 @@ const defaultTTL = 30 * time.Minute
 type Server struct {
 	meta      *meta.Store
 	scheduler *scheduler.Scheduler
+	registry  *registry.Registry
 	mux       *http.ServeMux
 }
 
-// New constructs the API server.
+// New constructs the API server (Phase 5 worker registry enabled).
 func New(m *meta.Store, sched *scheduler.Scheduler) *Server {
-	s := &Server{meta: m, scheduler: sched, mux: http.NewServeMux()}
+	return NewWithRegistry(m, sched, registry.New(45*time.Second))
+}
+
+// NewWithRegistry constructs the API server with an explicit worker registry.
+func NewWithRegistry(m *meta.Store, sched *scheduler.Scheduler, reg *registry.Registry) *Server {
+	s := &Server{meta: m, scheduler: sched, registry: reg, mux: http.NewServeMux()}
 	s.routes()
 	return s
 }
+
+// Registry returns the worker registry (may be nil).
+func (s *Server) Registry() *registry.Registry { return s.registry }
 
 func (s *Server) routes() {
 	s.mux.HandleFunc("GET /health", s.handleHealth)
@@ -43,6 +53,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("DELETE /v1/cells/{id}", s.handleDelete)
 	s.mux.HandleFunc("POST /v1/cells/{id}/exec", s.handleExec)
 	s.mux.HandleFunc("POST /v1/run", s.handleRun)
+	s.mux.HandleFunc("POST /v1/workers/register", s.handleWorkerRegister)
+	s.mux.HandleFunc("POST /v1/workers/{id}/heartbeat", s.handleWorkerHeartbeat)
+	s.mux.HandleFunc("GET /v1/workers", s.handleWorkerList)
 }
 
 // Handler returns the HTTP handler.
@@ -92,6 +105,51 @@ func removeStaleSocket(socketPath string) error {
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *Server) handleWorkerRegister(w http.ResponseWriter, r *http.Request) {
+	if s.registry == nil {
+		writeErr(w, http.StatusNotImplemented, "worker registry disabled")
+		return
+	}
+	var req registry.RegisterRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	info, err := s.registry.Register(req)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, info)
+}
+
+func (s *Server) handleWorkerHeartbeat(w http.ResponseWriter, r *http.Request) {
+	if s.registry == nil {
+		writeErr(w, http.StatusNotImplemented, "worker registry disabled")
+		return
+	}
+	id := r.PathValue("id")
+	var req registry.HeartbeatRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	info, err := s.registry.Heartbeat(id, req)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, info)
+}
+
+func (s *Server) handleWorkerList(w http.ResponseWriter, r *http.Request) {
+	if s.registry == nil {
+		writeJSON(w, http.StatusOK, []registry.Info{})
+		return
+	}
+	writeJSON(w, http.StatusOK, s.registry.List())
 }
 
 func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
