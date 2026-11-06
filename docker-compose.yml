@@ -1,0 +1,63 @@
+# Mini Cell cluster for Phase 5 smoke.
+# Usage:
+#   docker compose up --build -d
+#   ./scripts/cluster-smoke.sh
+#   docker compose down -v
+#
+# Control places Cells onto worker-a / worker-b over HTTP worker RPC.
+# CELL_RUNTIME=host avoids docker-in-docker for the smoke path.
+
+services:
+  control:
+    build: .
+    command:
+      - serve
+      - --mode=control
+      - --listen-http=:8080
+      - --cell-home=/data
+      - --worker-id=control
+    ports:
+      - "18080:8080"
+    volumes:
+      - control-data:/data
+
+  worker-a:
+    build: .
+    environment:
+      CELL_RUNTIME: host
+      CELL_ADVERTISE_HOST: worker-a
+    command:
+      - serve
+      - --mode=worker
+      - --worker-id=worker-a
+      - --listen-http=:8080
+      - --control-url=http://control:8080
+      - --cell-home=/data
+      - --environments=/app/environments
+    volumes:
+      - worker-a-data:/data
+    depends_on:
+      - control
+
+  worker-b:
+    build: .
+    environment:
+      CELL_RUNTIME: host
+      CELL_ADVERTISE_HOST: worker-b
+    command:
+      - serve
+      - --mode=worker
+      - --worker-id=worker-b
+      - --listen-http=:8080
+      - --control-url=http://control:8080
+      - --cell-home=/data
+      - --environments=/app/environments
+    volumes:
+      - worker-b-data:/data
+    depends_on:
+      - control
+
+volumes:
+  control-data:
+  worker-a-data:
+  worker-b-data:
