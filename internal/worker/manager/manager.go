@@ -238,27 +238,12 @@ func (w *LocalWorker) runSetup(ctx context.Context, cellID, workspace string, st
 		if run == "" {
 			continue
 		}
-		if cond := strings.TrimSpace(step.If); cond != "" {
-			res, err := w.rt.Exec(ctx, runtime.ExecOpts{
-				CellID: cellID, Workspace: workspace, Command: cond, TimeoutSeconds: timeoutSeconds,
-			})
-			if err != nil {
-				return fmt.Errorf("manager: setup[%d] if %q: %w", i, cond, err)
-			}
-			if res != nil && res.ExitCode != 0 {
-				continue // condition false → skip
-			}
+		skip, err := w.setupShouldSkip(ctx, cellID, workspace, i, step, timeoutSeconds)
+		if err != nil {
+			return err
 		}
-		if cond := strings.TrimSpace(step.Unless); cond != "" {
-			res, err := w.rt.Exec(ctx, runtime.ExecOpts{
-				CellID: cellID, Workspace: workspace, Command: cond, TimeoutSeconds: timeoutSeconds,
-			})
-			if err != nil {
-				return fmt.Errorf("manager: setup[%d] unless %q: %w", i, cond, err)
-			}
-			if res != nil && res.ExitCode == 0 {
-				continue // unless true → skip
-			}
+		if skip {
+			continue
 		}
 		res, err := w.rt.Exec(ctx, runtime.ExecOpts{
 			CellID:         cellID,
@@ -275,6 +260,39 @@ func (w *LocalWorker) runSetup(ctx context.Context, cellID, workspace string, st
 		}
 	}
 	return nil
+}
+
+// setupShouldSkip evaluates if/unless predicates. skip=true means do not run the step.
+func (w *LocalWorker) setupShouldSkip(ctx context.Context, cellID, workspace string, i int, step envtemplate.SetupStep, timeoutSeconds int) (bool, error) {
+	if cond := strings.TrimSpace(step.If); cond != "" {
+		ok, err := w.setupCondOK(ctx, cellID, workspace, timeoutSeconds, cond)
+		if err != nil {
+			return false, fmt.Errorf("manager: setup[%d] if %q: %w", i, cond, err)
+		}
+		if !ok {
+			return true, nil
+		}
+	}
+	if cond := strings.TrimSpace(step.Unless); cond != "" {
+		ok, err := w.setupCondOK(ctx, cellID, workspace, timeoutSeconds, cond)
+		if err != nil {
+			return false, fmt.Errorf("manager: setup[%d] unless %q: %w", i, cond, err)
+		}
+		if ok {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (w *LocalWorker) setupCondOK(ctx context.Context, cellID, workspace string, timeoutSeconds int, cond string) (bool, error) {
+	res, err := w.rt.Exec(ctx, runtime.ExecOpts{
+		CellID: cellID, Workspace: workspace, Command: cond, TimeoutSeconds: timeoutSeconds,
+	})
+	if err != nil {
+		return false, err
+	}
+	return res == nil || res.ExitCode == 0, nil
 }
 
 func (w *LocalWorker) resolveEnv(req api.CreateCellRequest) (
