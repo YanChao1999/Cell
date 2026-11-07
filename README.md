@@ -156,4 +156,14 @@ Config: `.golangci.yml`.
 
 ## Tech debt
 
-Open gaps — microVM, remote worker RPC / cross-node cache, stronger userns — are tracked in [TECH_DEBT.md](TECH_DEBT.md). Security is enforced in the daemon/`Runtime` design, not as optional later folklore.
+### Mini cluster (Compose)
+
+```bash
+docker compose up --build -d
+./scripts/cluster-smoke.sh
+docker compose down -v
+```
+
+Control listens on `localhost:18080`; workers register over HTTP and receive Create/Exec via worker RPC (`CELL_RUNTIME=host` in compose).
+
+Open gaps — microVM, cross-node cache pull, worker RPC auth — are tracked in [TECH_DEBT.md](TECH_DEBT.md).
