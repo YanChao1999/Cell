@@ -6,25 +6,42 @@ cd "$ROOT"
 CTRL="${CELL_CLUSTER_URL:-http://127.0.0.1:18080}"
 
 echo "waiting for control at $CTRL ..."
+READY=0
 for _ in $(seq 1 60); do
   if curl -sf "$CTRL/health" >/dev/null 2>&1; then
+    READY=1
     break
   fi
   sleep 1
 done
+if [ "$READY" != 1 ]; then
+  echo "control not reachable at $CTRL after 60s." >&2
+  echo "Start the cluster first:" >&2
+  echo "  docker compose up --build -d" >&2
+  echo "Or point CELL_CLUSTER_URL at a running control plane." >&2
+  exit 1
+fi
 curl -sf "$CTRL/health" | grep -q ok
 echo "OK control health"
 
 echo "waiting for workers to register ..."
+WORKERS='[]'
 for _ in $(seq 1 60); do
-  N=$(curl -sf "$CTRL/v1/workers" | python3 -c 'import sys,json; print(len(json.load(sys.stdin)))' 2>/dev/null || echo 0)
+  WORKERS=$(curl -sf "$CTRL/v1/workers" 2>/dev/null || echo '[]')
+  N=$(printf '%s' "$WORKERS" | python3 -c 'import sys,json; print(len(json.load(sys.stdin)))' 2>/dev/null || echo 0)
   if [ "$N" -ge 2 ]; then
     break
   fi
   sleep 1
 done
-WORKERS=$(curl -sf "$CTRL/v1/workers")
-echo "$WORKERS" | python3 -c 'import sys,json; w=json.load(sys.stdin); assert len(w)>=2, w; print("OK workers:", ",".join(sorted(x["id"] for x in w)))'
+N=$(printf '%s' "$WORKERS" | python3 -c 'import sys,json; print(len(json.load(sys.stdin)))' 2>/dev/null || echo 0)
+if [ "$N" -lt 2 ]; then
+  echo "expected >=2 registered workers, got: $WORKERS" >&2
+  echo "If using compose: docker compose logs worker-a worker-b" >&2
+  echo "Also check nothing else owns $CTRL (e.g. leftover ./bin/celld on :18080)." >&2
+  exit 1
+fi
+printf '%s' "$WORKERS" | python3 -c 'import sys,json; w=json.load(sys.stdin); print("OK workers:", ",".join(sorted(x["id"] for x in w)))'
 
 create_one() {
   curl -sf "$CTRL/v1/cells" -H 'Content-Type: application/json' -d '{
