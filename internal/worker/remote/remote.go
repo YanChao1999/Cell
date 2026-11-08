@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/YanChao1999/Cell/api"
+	"github.com/YanChao1999/Cell/internal/worker/auth"
+	"github.com/YanChao1999/Cell/internal/worker/cache"
 	"github.com/YanChao1999/Cell/internal/workerapi"
 )
 
@@ -20,6 +22,7 @@ import (
 type Worker struct {
 	id       string
 	endpoint string // http://host:port (no trailing slash)
+	token    string
 	client   *http.Client
 
 	mu        sync.Mutex
@@ -28,8 +31,13 @@ type Worker struct {
 	cacheKeys []string
 }
 
+// Options configure a remote worker client.
+type Options struct {
+	Token string
+}
+
 // New returns a remote worker client. endpoint must be http(s)://...
-func New(id, endpoint string) (*Worker, error) {
+func New(id, endpoint string, opts Options) (*Worker, error) {
 	endpoint = strings.TrimRight(strings.TrimSpace(endpoint), "/")
 	if id == "" {
 		return nil, fmt.Errorf("remote: id required")
@@ -40,12 +48,16 @@ func New(id, endpoint string) (*Worker, error) {
 	return &Worker{
 		id:       id,
 		endpoint: endpoint,
+		token:    strings.TrimSpace(opts.Token),
 		client:   &http.Client{Timeout: 0}, // long create/setup/exec; server enforces budgets
 		maxCells: 1,
 	}, nil
 }
 
 func (w *Worker) ID() string { return w.id }
+
+// Endpoint returns the base HTTP URL.
+func (w *Worker) Endpoint() string { return w.endpoint }
 
 // UpdateCapacity refreshes placement stats from registry heartbeats.
 func (w *Worker) UpdateCapacity(max, used int, cacheKeys []string) {
@@ -103,6 +115,31 @@ func (w *Worker) DestroyCell(ctx context.Context, cellID string) error {
 	return err
 }
 
+// PullCache downloads a warm cache key into dest layout.
+func (w *Worker) PullCache(ctx context.Context, key string, dest *cache.Layout) error {
+	if dest == nil {
+		return fmt.Errorf("remote: nil cache layout")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, w.endpoint+"/worker/v1/caches/"+key, nil)
+	if err != nil {
+		return err
+	}
+	auth.SetBearer(req.Header, w.token)
+	resp, err := w.httpClient().Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode == http.StatusNotFound {
+		return fmt.Errorf("remote %s: cache %q not warm", w.id, key)
+	}
+	if resp.StatusCode >= 300 {
+		data, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("remote %s: pull %s: %s: %s", w.id, key, resp.Status, data)
+	}
+	return dest.UnpackTarGzip(resp.Body, key, cache.TransferOptions{})
+}
+
 func (w *Worker) doJSON(ctx context.Context, method, path string, body any, out any) error {
 	var rdr io.Reader
 	if body != nil {
@@ -119,14 +156,8 @@ func (w *Worker) doJSON(ctx context.Context, method, path string, body any, out 
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	// Dial stays bounded even when overall Timeout is 0.
-	if w.client.Transport == nil {
-		w.client.Transport = &http.Transport{
-			ResponseHeaderTimeout: 0,
-			IdleConnTimeout:       90 * time.Second,
-		}
-	}
-	resp, err := w.client.Do(req)
+	auth.SetBearer(req.Header, w.token)
+	resp, err := w.httpClient().Do(req)
 	if err != nil {
 		return err
 	}
@@ -144,6 +175,16 @@ func (w *Worker) doJSON(ctx context.Context, method, path string, body any, out 
 		return nil
 	}
 	return json.Unmarshal(data, out)
+}
+
+func (w *Worker) httpClient() *http.Client {
+	if w.client.Transport == nil {
+		w.client.Transport = &http.Transport{
+			ResponseHeaderTimeout: 0,
+			IdleConnTimeout:       90 * time.Second,
+		}
+	}
+	return w.client
 }
 
 type mapIndex []string

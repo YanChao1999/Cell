@@ -12,9 +12,14 @@ import (
 )
 
 func TestRemoteCreateExecDestroy(t *testing.T) {
+	const token = "test-token"
 	mux := http.NewServeMux()
 	cells := map[string]*workerapi.Cell{}
 	mux.HandleFunc("POST /worker/v1/cells", func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer "+token {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
 		c := &workerapi.Cell{ID: "c1", Environment: "go-1.23", Status: "ready"}
 		cells[c.ID] = c
 		w.WriteHeader(http.StatusCreated)
@@ -30,7 +35,7 @@ func TestRemoteCreateExecDestroy(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	rw, err := New("w1", srv.URL)
+	rw, err := New("w1", srv.URL, Options{Token: token})
 	if err != nil {
 		t.Fatal(err)
 	}

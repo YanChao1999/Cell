@@ -32,7 +32,7 @@ go build -o bin/cell ./cmd/cell
 CGO_ENABLED=0 go build -o bin/cell-egress ./cmd/cell-egress
 # Optional dedicated sidecar image (recommended for allowlist on arbitrary Cell images)
 # ./scripts/build-egress-image.sh   # tags CELL_EGRESS_IMAGE or cell-egress:local
-go test ./internal/worker/cache/ ./internal/worker/envtemplate/ ./internal/worker/egress/ ./internal/worker/runtime/docker/ ./internal/control/registry/
+go test ./internal/worker/cache/ ./internal/worker/auth/ ./internal/worker/envtemplate/ ./internal/worker/egress/ ./internal/worker/runtime/docker/ ./internal/worker/remote/ ./internal/control/registry/
 ```
 
 ## Run (`mode=all`)
@@ -164,6 +164,6 @@ docker compose up --build -d
 docker compose down -v
 ```
 
-Control listens on `localhost:18080`; workers register over HTTP and receive Create/Exec via worker RPC (`CELL_RUNTIME=host` in compose).
+Control listens on `localhost:18080`; workers register over HTTP and receive Create/Exec via worker RPC (`CELL_RUNTIME=host` in compose). Set `CELL_WORKER_TOKEN` (compose uses `cell-dev-token`) so register/heartbeat and `/worker/v1/*` require Bearer auth. Cold cache keys are pulled from warm peers on create (`GET /worker/v1/caches/{key}`).
 
-Open gaps — microVM, cross-node cache pull, worker RPC auth — are tracked in [TECH_DEBT.md](TECH_DEBT.md).
+Open gaps — microVM and stronger auth — are tracked in [TECH_DEBT.md](TECH_DEBT.md).

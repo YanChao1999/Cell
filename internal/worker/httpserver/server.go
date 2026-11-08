@@ -8,18 +8,26 @@ import (
 	"net/http"
 
 	"github.com/YanChao1999/Cell/api"
+	"github.com/YanChao1999/Cell/internal/worker/auth"
+	"github.com/YanChao1999/Cell/internal/worker/cache"
 	"github.com/YanChao1999/Cell/internal/worker/manager"
 )
 
 // Server serves worker RPC routes.
 type Server struct {
 	worker *manager.LocalWorker
+	token  string
 	mux    *http.ServeMux
 }
 
+// Options configure the worker HTTP server.
+type Options struct {
+	Token string // shared Bearer token; empty disables auth
+}
+
 // New wraps a LocalWorker.
-func New(w *manager.LocalWorker) *Server {
-	s := &Server{worker: w, mux: http.NewServeMux()}
+func New(w *manager.LocalWorker, opts Options) *Server {
+	s := &Server{worker: w, token: opts.Token, mux: http.NewServeMux()}
 	s.routes()
 	return s
 }
@@ -30,10 +38,13 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /worker/v1/cells", s.handleCreate)
 	s.mux.HandleFunc("POST /worker/v1/cells/{id}/exec", s.handleExec)
 	s.mux.HandleFunc("DELETE /worker/v1/cells/{id}", s.handleDestroy)
+	s.mux.HandleFunc("GET /worker/v1/caches/{key}", s.handleCacheGet)
 }
 
-// Handler returns the HTTP handler.
-func (s *Server) Handler() http.Handler { return s.mux }
+// Handler returns the HTTP handler (with optional Bearer auth).
+func (s *Server) Handler() http.Handler {
+	return auth.Middleware(s.token)(s.mux)
+}
 
 // ListenAndServe serves on TCP addr (e.g. ":8080").
 func (s *Server) ListenAndServe(addr string) error {
@@ -41,7 +52,7 @@ func (s *Server) ListenAndServe(addr string) error {
 	if err != nil {
 		return err
 	}
-	return http.Serve(ln, s.mux)
+	return http.Serve(ln, s.Handler())
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -88,6 +99,28 @@ func (s *Server) handleDestroy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleCacheGet(w http.ResponseWriter, r *http.Request) {
+	key := r.PathValue("key")
+	layout := s.worker.CacheLayout()
+	if layout == nil {
+		writeErr(w, http.StatusNotFound, "cache unavailable")
+		return
+	}
+	abs, err := layout.Resolve(key)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if !cache.DirIsWarm(abs) {
+		writeErr(w, http.StatusNotFound, "cache key not warm")
+		return
+	}
+	w.Header().Set("Content-Type", "application/gzip")
+	w.Header().Set("Content-Disposition", "attachment; filename=\""+key+".tar.gz\"")
+	w.WriteHeader(http.StatusOK)
+	_ = layout.PackTarGzip(w, key, cache.TransferOptions{})
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

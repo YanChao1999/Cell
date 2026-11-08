@@ -30,7 +30,7 @@ Cell is an execution boundary for untrusted agent work. Security is not a later 
 - Dedicated egress image (`docker/cell-egress`, `CELL_EGRESS_IMAGE`, `./scripts/build-egress-image.sh`); bind-mount fallback if image missing.
 - Portable disk: host workspace `du` enforcement; storage-opt still opt-in via `CELL_DOCKER_DISK_STORAGE_OPT=1`.
 - Userns: `--cgroupns=private`; do not force `--userns=host` (escape hatch `CELL_DOCKER_USERNS=host`).
-- Phase 5 foundation: in-memory worker **registry** + register/heartbeat/list API; local worker self-registers and heartbeats. Placement still uses in-process scheduler workers; **cross-node cache pull** not done.
+- Phase 5 foundation: in-memory worker **registry** + register/heartbeat/list API; local worker self-registers and heartbeats.
 
 ## Still open
 
@@ -43,12 +43,13 @@ Cell is an execution boundary for untrusted agent work. Security is not a later 
 - Harder disk caps (project quotas) where operators can enable them.
 
 ### Phase 5 (remaining)
-- Optional cross-node cache pull / warm cache replication.
 - Cross-platform mirror lock if Windows workers appear.
-- Harden worker RPC auth (compose smoke is trusted network only).
 - Compose CI job (optional; local `docker compose` + `scripts/cluster-smoke.sh` for now).
+- Stronger worker auth (mTLS / short-lived tokens) beyond shared Bearer `CELL_WORKER_TOKEN`.
 
-### Phase 5 landed (cluster compose branch)
+### Phase 5 landed (cluster compose + cache/auth)
 - `celld --mode=control|worker|all`, `--listen-http`, `--control-url`.
 - Worker HTTP RPC (`/worker/v1/...`) + remote client; registry sync into scheduler.
 - `docker-compose.yml` (control + worker-a + worker-b) and `scripts/cluster-smoke.sh`.
+- Shared Bearer auth: `CELL_WORKER_TOKEN` / `--worker-token` on worker RPC + register/heartbeat.
+- Cross-node cache pull: `GET /worker/v1/caches/{key}` + create-time pull of cold keys from warm peers.

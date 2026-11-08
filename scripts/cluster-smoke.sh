@@ -43,6 +43,16 @@ if [ "$N" -lt 2 ]; then
 fi
 printf '%s' "$WORKERS" | python3 -c 'import sys,json; w=json.load(sys.stdin); print("OK workers:", ",".join(sorted(x["id"] for x in w)))'
 
+# Worker RPC must reject unauthenticated calls when CELL_WORKER_TOKEN is set in compose.
+CODE=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18081/worker/v1/health || true)
+if [ "$CODE" != "401" ]; then
+  echo "expected worker RPC 401 without token, got $CODE" >&2
+  exit 1
+fi
+TOKEN="${CELL_WORKER_TOKEN:-cell-dev-token}"
+curl -sf -H "Authorization: Bearer $TOKEN" http://127.0.0.1:18081/worker/v1/health | grep -q ok
+echo "OK worker RPC auth"
+
 create_one() {
   curl -sf "$CTRL/v1/cells" -H 'Content-Type: application/json' -d '{
     "environment":"go-1.23",

@@ -185,21 +185,13 @@ func (i *Index) Remove(key string) {
 	delete(i.keys, key)
 }
 
-// SeedFromLayout registers well-known and existing cache dir names into the index.
+// SeedFromLayout registers warm (non-empty) cache directories into the index.
+// Empty well-known dirs are not advertised so placement/pull see real warmth.
 func (i *Index) SeedFromLayout(l *Layout) {
-	if i == nil || l == nil || l.Root == "" {
+	if i == nil || l == nil {
 		return
 	}
-	for _, name := range WellKnownDirs {
-		i.Add(name)
-	}
-	entries, err := os.ReadDir(l.Root)
-	if err != nil {
-		return
-	}
-	for _, e := range entries {
-		if e.IsDir() {
-			i.Add(e.Name())
-		}
+	for _, key := range l.WarmKeys() {
+		i.Add(key)
 	}
 }

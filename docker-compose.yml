@@ -11,10 +11,17 @@
 
 name: cell
 
+x-worker-env: &worker-env
+  CELL_RUNTIME: host
+  CELL_ADVERTISE_HOST: 127.0.0.1
+  CELL_WORKER_TOKEN: cell-dev-token
+
 services:
   control:
     build: .
     network_mode: host
+    environment:
+      CELL_WORKER_TOKEN: cell-dev-token
     command:
       - serve
       - --mode=control
@@ -28,8 +35,7 @@ services:
     build: .
     network_mode: host
     environment:
-      CELL_RUNTIME: host
-      CELL_ADVERTISE_HOST: 127.0.0.1
+      <<: *worker-env
     command:
       - serve
       - --mode=worker
@@ -47,8 +53,7 @@ services:
     build: .
     network_mode: host
     environment:
-      CELL_RUNTIME: host
-      CELL_ADVERTISE_HOST: 127.0.0.1
+      <<: *worker-env
     command:
       - serve
       - --mode=worker
