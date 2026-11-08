@@ -1,0 +1,68 @@
+# Mini Cell cluster for Phase 5 smoke (Linux host networking).
+# Bridge DNS was unreliable here ("lookup control: server misbehaving"), so all
+# services share the host network and use distinct ports.
+#
+# Usage:
+#   # free :18080 if a leftover host celld is bound there
+#   docker compose down
+#   docker compose up --build -d
+#   ./scripts/cluster-smoke.sh
+#   docker compose down -v
+
+name: cell
+
+services:
+  control:
+    build: .
+    network_mode: host
+    command:
+      - serve
+      - --mode=control
+      - --listen-http=127.0.0.1:18080
+      - --cell-home=/data
+      - --worker-id=control
+    volumes:
+      - control-data:/data
+
+  worker-a:
+    build: .
+    network_mode: host
+    environment:
+      CELL_RUNTIME: host
+      CELL_ADVERTISE_HOST: 127.0.0.1
+    command:
+      - serve
+      - --mode=worker
+      - --worker-id=worker-a
+      - --listen-http=127.0.0.1:18081
+      - --control-url=http://127.0.0.1:18080
+      - --cell-home=/data
+      - --environments=/app/environments
+    volumes:
+      - worker-a-data:/data
+    depends_on:
+      - control
+
+  worker-b:
+    build: .
+    network_mode: host
+    environment:
+      CELL_RUNTIME: host
+      CELL_ADVERTISE_HOST: 127.0.0.1
+    command:
+      - serve
+      - --mode=worker
+      - --worker-id=worker-b
+      - --listen-http=127.0.0.1:18082
+      - --control-url=http://127.0.0.1:18080
+      - --cell-home=/data
+      - --environments=/app/environments
+    volumes:
+      - worker-b-data:/data
+    depends_on:
+      - control
+
+volumes:
+  control-data:
+  worker-a-data:
+  worker-b-data:

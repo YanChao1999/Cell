@@ -2,13 +2,17 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -19,6 +23,7 @@ import (
 	"github.com/YanChao1999/Cell/internal/control/scheduler"
 	"github.com/YanChao1999/Cell/internal/worker/cache"
 	"github.com/YanChao1999/Cell/internal/worker/envtemplate"
+	"github.com/YanChao1999/Cell/internal/worker/httpserver"
 	"github.com/YanChao1999/Cell/internal/worker/manager"
 	"github.com/YanChao1999/Cell/internal/worker/runtime/docker"
 	"github.com/YanChao1999/Cell/internal/worker/source/git"
@@ -36,7 +41,7 @@ func main() {
 			log.Fatal(err)
 		}
 	case "version", "-version", "--version":
-		fmt.Println("celld 0.3.0-phase3")
+		fmt.Println("celld 0.4.0-phase5")
 	case "help", "-h", "--help":
 		usage()
 	default:
@@ -51,17 +56,21 @@ func usage() {
 
 Usage:
   celld serve --mode=all --socket ~/.cell/celld.sock
+  celld serve --mode=control --listen-http :8080
+  celld serve --mode=worker --worker-id=w1 --listen-http :8080 --control-url http://control:8080
 
 Flags (serve):
-  --mode            all | control | worker (MVP: all)
-  --socket          unix socket (default ~/.cell/celld.sock)
+  --mode            all | control | worker
+  --socket          unix socket (default <cell-home>/celld.sock); used in mode=all
+  --listen-http     TCP listen addr for control and/or worker RPC (e.g. :8080)
+  --control-url     control plane base URL for mode=worker registration
   --cell-home       base dir (default ~/.cell); sets defaults for other paths
   --state-dir       meta state dir (default <cell-home>/state)
   --workspaces      workspace root (default <cell-home>/workspaces)
   --repos           bare git mirrors (default <cell-home>/repos)
   --cache-dir       package caches (default <cell-home>/cache)
   --environments    env template YAML dir (default ./environments)
-  --worker-id       local worker id (default local)
+  --worker-id       worker id (default local)
 
 Commands:
   serve     Start the daemon
@@ -73,13 +82,15 @@ func runServe(args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	mode := fs.String("mode", "all", "mode: all | control | worker")
 	socket := fs.String("socket", "", "unix socket path (default <cell-home>/celld.sock)")
+	listenHTTP := fs.String("listen-http", "", "TCP listen address (required for control/worker cluster)")
+	controlURL := fs.String("control-url", "", "control plane URL for worker registration")
 	cellHomeFlag := fs.String("cell-home", "", "cell home directory (default ~/.cell)")
 	stateDir := fs.String("state-dir", "", "meta state dir (default <cell-home>/state)")
 	workspaces := fs.String("workspaces", "", "workspace root (default <cell-home>/workspaces)")
 	repos := fs.String("repos", "", "bare git mirror root (default <cell-home>/repos)")
 	cacheDir := fs.String("cache-dir", "", "cache root (default <cell-home>/cache)")
 	environments := fs.String("environments", "", "environment templates dir (default ./environments)")
-	workerID := fs.String("worker-id", "local", "local worker id")
+	workerID := fs.String("worker-id", "local", "worker id")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -114,12 +125,18 @@ func runServe(args []string) error {
 	if *environments == "" {
 		*environments = "environments"
 	}
-	if *mode != "all" && *mode != "control" && *mode != "worker" {
-		return fmt.Errorf("unsupported mode %q (phase3 supports all)", *mode)
+	switch *mode {
+	case "all", "control", "worker":
+	default:
+		return fmt.Errorf("unsupported mode %q (want all|control|worker)", *mode)
 	}
-	_ = *mode
+	if *mode != "all" && strings.TrimSpace(*listenHTTP) == "" {
+		return fmt.Errorf("mode %q requires --listen-http", *mode)
+	}
+	if *mode == "worker" && strings.TrimSpace(*controlURL) == "" {
+		return fmt.Errorf("mode=worker requires --control-url")
+	}
 
-	// Docker bind mounts and git worktrees require absolute roots.
 	for _, p := range []*string{socket, stateDir, workspaces, repos, cacheDir} {
 		abs, err := filepath.Abs(*p)
 		if err != nil {
@@ -128,69 +145,104 @@ func runServe(args []string) error {
 		*p = abs
 	}
 
-	store, err := meta.New(*stateDir)
-	if err != nil {
-		return fmt.Errorf("meta: %w", err)
-	}
-
-	src, err := git.New(*repos)
-	if err != nil {
-		return fmt.Errorf("git source: %w", err)
-	}
-
-	envAbs, err := filepath.Abs(*environments)
-	if err != nil {
-		return fmt.Errorf("environments: %w", err)
-	}
-	envLoader := envtemplate.New(envAbs)
-	cacheLayout := cache.NewLayout(*cacheDir)
-	if err := cacheLayout.Ensure(); err != nil {
-		return fmt.Errorf("cache: %w", err)
-	}
-	log.Printf("celld: environments=%s repos=%s cache=%s", envAbs, *repos, *cacheDir)
-
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	// Security: after restart, worker/runtime maps are empty. Tear down any
-	// leftover containers and drop unrecovered meta rather than advertising
-	// ghost Cells that exec would miss (or worse, host-escape).
+	switch *mode {
+	case "control":
+		return runControl(ctx, *listenHTTP, *stateDir, *workerID)
+	case "worker":
+		return runWorker(ctx, workerOpts{
+			id:           *workerID,
+			listenHTTP:   *listenHTTP,
+			controlURL:   strings.TrimRight(*controlURL, "/"),
+			workspaces:   *workspaces,
+			repos:        *repos,
+			cacheDir:     *cacheDir,
+			environments: *environments,
+		})
+	default:
+		return runAll(ctx, *socket, *listenHTTP, *stateDir, *workspaces, *repos, *cacheDir, *environments, *workerID)
+	}
+}
+
+func runControl(ctx context.Context, listenHTTP, stateDir, localID string) error {
+	store, err := meta.New(stateDir)
+	if err != nil {
+		return fmt.Errorf("meta: %w", err)
+	}
+	if err := store.Reset(); err != nil {
+		return fmt.Errorf("meta reset: %w", err)
+	}
+	sched := scheduler.New(nil, localID)
+	srv := ctrlapi.New(store, sched)
+	rp := reaper.New(store, sched, srv.DestroyCell, 15*time.Second)
+	go rp.Run(ctx)
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- srv.ListenAndServeHTTP(listenHTTP) }()
+	log.Printf("celld: mode=control listen-http=%s", listenHTTP)
+	return waitServe(ctx, errCh, "")
+}
+
+type workerOpts struct {
+	id, listenHTTP, controlURL                string
+	workspaces, repos, cacheDir, environments string
+}
+
+func runWorker(ctx context.Context, o workerOpts) error {
+	lw, err := newLocalWorker(o.id, o.workspaces, o.repos, o.cacheDir, o.environments)
+	if err != nil {
+		return err
+	}
+	if err := docker.PruneLabeledContainers(ctx); err != nil {
+		log.Printf("celld: prune orphan containers: %v", err)
+	}
+
+	wSrv := httpserver.New(lw)
+	publicEP := advertiseHTTP(o.listenHTTP)
+	go heartbeatToControl(ctx, o.controlURL, o.id, publicEP, lw, 10*time.Second)
+	if err := registerWithControl(ctx, o.controlURL, o.id, publicEP, lw); err != nil {
+		log.Printf("celld: initial register: %v (will retry via heartbeat path after re-register)", err)
+		go reRegisterLoop(ctx, o.controlURL, o.id, publicEP, lw)
+	}
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- wSrv.ListenAndServe(o.listenHTTP) }()
+	log.Printf("celld: mode=worker id=%s listen-http=%s control=%s", o.id, o.listenHTTP, o.controlURL)
+	return waitServe(ctx, errCh, "")
+}
+
+func runAll(ctx context.Context, socket, listenHTTP, stateDir, workspaces, repos, cacheDir, environments, workerID string) error {
+	store, err := meta.New(stateDir)
+	if err != nil {
+		return fmt.Errorf("meta: %w", err)
+	}
 	if err := docker.PruneLabeledContainers(ctx); err != nil {
 		log.Printf("celld: prune orphan containers: %v", err)
 	}
 	for _, rec := range store.List() {
-		_ = os.RemoveAll(filepath.Join(*workspaces, rec.ID))
+		_ = os.RemoveAll(filepath.Join(workspaces, rec.ID))
 	}
 	if err := store.Reset(); err != nil {
 		return fmt.Errorf("meta reset on startup: %w", err)
 	}
 
-	lw, err := manager.New(manager.Options{
-		ID:             *workerID,
-		WorkspacesRoot: *workspaces,
-		ReposRoot:      *repos,
-		CacheDir:       *cacheDir,
-		CacheLayout:    cacheLayout,
-		Runtime:        docker.New(),
-		Source:         src,
-		EnvLoader:      envLoader,
-	})
+	lw, err := newLocalWorker(workerID, workspaces, repos, cacheDir, environments)
 	if err != nil {
-		return fmt.Errorf("worker: %w", err)
+		return err
 	}
-
-	sched := scheduler.New([]workerapi.Worker{lw}, *workerID)
+	sched := scheduler.New([]workerapi.Worker{lw}, workerID)
 	srv := ctrlapi.New(store, sched)
 
-	// Phase 5 foundation: register local worker and heartbeat into the registry.
 	if reg := srv.Registry(); reg != nil {
+		ep := "unix://" + socket
+		if listenHTTP != "" {
+			ep = advertiseHTTP(listenHTTP)
+		}
 		cap := lw.Capacity()
 		_, _ = reg.Register(registry.RegisterRequest{
-			ID:        lw.ID(),
-			Endpoint:  "unix://" + *socket,
-			MaxCells:  cap.MaxCells,
-			UsedCells: cap.UsedCells,
-			CacheKeys: lw.CacheIndex().Keys(),
+			ID: lw.ID(), Endpoint: ep, MaxCells: cap.MaxCells, UsedCells: cap.UsedCells, CacheKeys: lw.CacheIndex().Keys(),
 		})
 		go heartbeatLocalWorker(ctx, reg, lw, 15*time.Second)
 	}
@@ -198,19 +250,135 @@ func runServe(args []string) error {
 	rp := reaper.New(store, sched, srv.DestroyCell, 15*time.Second)
 	go rp.Run(ctx)
 
-	errCh := make(chan error, 1)
-	go func() {
-		errCh <- srv.ListenAndServe(*socket)
-	}()
+	errCh := make(chan error, 2)
+	go func() { errCh <- srv.ListenAndServe(socket) }()
+	if listenHTTP != "" {
+		go func() { errCh <- srv.ListenAndServeHTTP(listenHTTP) }()
+	}
+	log.Printf("celld: mode=all socket=%s listen-http=%q", socket, listenHTTP)
+	return waitServe(ctx, errCh, socket)
+}
 
+func newLocalWorker(id, workspaces, repos, cacheDir, environments string) (*manager.LocalWorker, error) {
+	src, err := git.New(repos)
+	if err != nil {
+		return nil, fmt.Errorf("git source: %w", err)
+	}
+	envAbs, err := filepath.Abs(environments)
+	if err != nil {
+		return nil, fmt.Errorf("environments: %w", err)
+	}
+	cacheLayout := cache.NewLayout(cacheDir)
+	if err := cacheLayout.Ensure(); err != nil {
+		return nil, fmt.Errorf("cache: %w", err)
+	}
+	log.Printf("celld: environments=%s repos=%s cache=%s", envAbs, repos, cacheDir)
+	return manager.New(manager.Options{
+		ID:             id,
+		WorkspacesRoot: workspaces,
+		ReposRoot:      repos,
+		CacheDir:       cacheDir,
+		CacheLayout:    cacheLayout,
+		Runtime:        docker.New(),
+		Source:         src,
+		EnvLoader:      envtemplate.New(envAbs),
+	})
+}
+
+func waitServe(ctx context.Context, errCh <-chan error, socket string) error {
 	select {
 	case <-ctx.Done():
-		_ = os.Remove(*socket)
+		if socket != "" {
+			_ = os.Remove(socket)
+		}
 		log.Println("celld shutting down")
 		return nil
 	case err := <-errCh:
 		return err
 	}
+}
+
+func advertiseHTTP(listen string) string {
+	// Compose services use the service hostname; listen may be ":8080".
+	host := os.Getenv("CELL_ADVERTISE_HOST")
+	port := listen
+	if i := strings.LastIndex(listen, ":"); i >= 0 {
+		port = listen[i+1:]
+	}
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	return "http://" + host + ":" + port
+}
+
+func registerWithControl(ctx context.Context, controlURL, id, endpoint string, w workerapi.Worker) error {
+	cap := w.Capacity()
+	body := registry.RegisterRequest{
+		ID: id, Endpoint: endpoint, MaxCells: cap.MaxCells, UsedCells: cap.UsedCells, CacheKeys: cacheKeys(w),
+	}
+	return postJSON(ctx, controlURL+"/v1/workers/register", body)
+}
+
+func heartbeatToControl(ctx context.Context, controlURL, id, endpoint string, w workerapi.Worker, every time.Duration) {
+	t := time.NewTicker(every)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			cap := w.Capacity()
+			body := registry.HeartbeatRequest{UsedCells: cap.UsedCells, MaxCells: cap.MaxCells, CacheKeys: cacheKeys(w)}
+			if err := postJSON(ctx, controlURL+"/v1/workers/"+id+"/heartbeat", body); err != nil {
+				log.Printf("celld: heartbeat: %v — re-registering", err)
+				_ = registerWithControl(ctx, controlURL, id, endpoint, w)
+			}
+		}
+	}
+}
+
+func reRegisterLoop(ctx context.Context, controlURL, id, endpoint string, w workerapi.Worker) {
+	t := time.NewTicker(3 * time.Second)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			if err := registerWithControl(ctx, controlURL, id, endpoint, w); err == nil {
+				log.Printf("celld: registered with control as %s → %s", id, endpoint)
+				return
+			}
+		}
+	}
+}
+
+func postJSON(ctx context.Context, url string, body any) error {
+	b, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(b))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("%s: %s", url, resp.Status)
+	}
+	return nil
+}
+
+func cacheKeys(w workerapi.Worker) []string {
+	if idx := w.CacheIndex(); idx != nil {
+		return idx.Keys()
+	}
+	return nil
 }
 
 func heartbeatLocalWorker(ctx context.Context, reg *registry.Registry, w workerapi.Worker, every time.Duration) {
@@ -222,14 +390,8 @@ func heartbeatLocalWorker(ctx context.Context, reg *registry.Registry, w workera
 			return
 		case <-t.C:
 			cap := w.Capacity()
-			var keys []string
-			if idx := w.CacheIndex(); idx != nil {
-				keys = idx.Keys()
-			}
 			if _, err := reg.Heartbeat(w.ID(), registry.HeartbeatRequest{
-				UsedCells: cap.UsedCells,
-				MaxCells:  cap.MaxCells,
-				CacheKeys: keys,
+				UsedCells: cap.UsedCells, MaxCells: cap.MaxCells, CacheKeys: cacheKeys(w),
 			}); err != nil {
 				log.Printf("celld: worker heartbeat: %v", err)
 			}

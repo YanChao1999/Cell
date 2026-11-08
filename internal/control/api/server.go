@@ -18,6 +18,7 @@ import (
 	"github.com/YanChao1999/Cell/internal/control/meta"
 	"github.com/YanChao1999/Cell/internal/control/registry"
 	"github.com/YanChao1999/Cell/internal/control/scheduler"
+	"github.com/YanChao1999/Cell/internal/worker/remote"
 )
 
 const defaultTTL = 30 * time.Minute
@@ -79,6 +80,16 @@ func (s *Server) ListenAndServe(socketPath string) error {
 	return http.Serve(ln, s.mux)
 }
 
+// ListenAndServeHTTP serves the control API on a TCP address (e.g. ":8080").
+func (s *Server) ListenAndServeHTTP(addr string) error {
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return err
+	}
+	log.Printf("celld listening on http://%s", ln.Addr().String())
+	return http.Serve(ln, s.mux)
+}
+
 // removeStaleSocket deletes only a dead socket. A live listener is left alone
 // so a second celld cannot hijack the first daemon's endpoint.
 func removeStaleSocket(socketPath string) error {
@@ -122,6 +133,10 @@ func (s *Server) handleWorkerRegister(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if err := s.syncRemoteWorker(info); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	writeJSON(w, http.StatusCreated, info)
 }
 
@@ -141,7 +156,33 @@ func (s *Server) handleWorkerHeartbeat(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, err.Error())
 		return
 	}
+	_ = s.syncRemoteWorker(info)
 	writeJSON(w, http.StatusOK, info)
+}
+
+// syncRemoteWorker ensures HTTP-endpoint workers are schedulable for Place/Exec.
+func (s *Server) syncRemoteWorker(info *registry.Info) error {
+	if info == nil || s.scheduler == nil {
+		return nil
+	}
+	ep := strings.TrimSpace(info.Endpoint)
+	if !strings.HasPrefix(ep, "http://") && !strings.HasPrefix(ep, "https://") {
+		return nil // unix/local workers are already in the scheduler process
+	}
+	if existing, ok := s.scheduler.Get(info.ID); ok {
+		if rw, ok := existing.(*remote.Worker); ok {
+			rw.UpdateCapacity(info.MaxCells, info.UsedCells, info.CacheKeys)
+		}
+		return nil
+	}
+	rw, err := remote.New(info.ID, ep)
+	if err != nil {
+		return err
+	}
+	rw.UpdateCapacity(info.MaxCells, info.UsedCells, info.CacheKeys)
+	s.scheduler.Register(rw)
+	log.Printf("api: scheduled remote worker id=%s endpoint=%s", info.ID, ep)
+	return nil
 }
 
 func (s *Server) handleWorkerList(w http.ResponseWriter, r *http.Request) {

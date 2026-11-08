@@ -43,7 +43,12 @@ Cell is an execution boundary for untrusted agent work. Security is not a later 
 - Harder disk caps (project quotas) where operators can enable them.
 
 ### Phase 5 (remaining)
-- Remote worker transport (RPC over registered endpoints).
-- Scheduler place across registry peers (not only local process workers).
-- Optional cross-node cache pull.
+- Optional cross-node cache pull / warm cache replication.
 - Cross-platform mirror lock if Windows workers appear.
+- Harden worker RPC auth (compose smoke is trusted network only).
+- Compose CI job (optional; local `docker compose` + `scripts/cluster-smoke.sh` for now).
+
+### Phase 5 landed (cluster compose branch)
+- `celld --mode=control|worker|all`, `--listen-http`, `--control-url`.
+- Worker HTTP RPC (`/worker/v1/...`) + remote client; registry sync into scheduler.
+- `docker-compose.yml` (control + worker-a + worker-b) and `scripts/cluster-smoke.sh`.

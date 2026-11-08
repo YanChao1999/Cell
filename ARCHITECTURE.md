@@ -251,4 +251,4 @@ Create runs environment template `setup` (optional `setup_timeout`, `if` / `unle
 
 Allowlist prefers dedicated image `CELL_EGRESS_IMAGE` / `cell-egress:local` (`docker/cell-egress`); falls back to bind-mounting `cell-egress` into the Cell image. Portable disk caps use host workspace size checks; Docker `storage-opt` remains opt-in.
 
-Phase 5 foundation: `POST /v1/workers/register`, `POST /v1/workers/{id}/heartbeat`, `GET /v1/workers`. Local `celld` self-registers. Remote RPC placement and cross-node cache pull remain open — see [TECH_DEBT.md](TECH_DEBT.md).
+Phase 5 cluster: `celld --mode=control|worker|all` with `--listen-http` / `--control-url`. Workers expose `/worker/v1/*`; control registers HTTP endpoints into the scheduler for Place/Exec. Compose layout: `docker-compose.yml` + `scripts/cluster-smoke.sh`. Cross-node cache pull remains open — see [TECH_DEBT.md](TECH_DEBT.md).
