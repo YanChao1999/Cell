@@ -31,6 +31,7 @@ func TestDockerRunArgsHardening(t *testing.T) {
 		"--cap-drop", "ALL",
 		"--cgroupns", "private",
 		"--read-only",
+		"--pids-limit", "256",
 		"--tmpfs",
 		"--network", "none",
 		"/tmp/cell-repos:/tmp/cell-repos:ro",

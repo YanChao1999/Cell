@@ -69,6 +69,7 @@ func startAllowlistEgress(ctx context.Context, opts runtime.CreateOpts) (netName
 		"--cap-add", "NET_BIND_SERVICE",
 		"--read-only",
 		"--tmpfs", "/tmp:rw,nosuid,nodev,size=64m",
+		"--pids-limit", dockerPidsLimit(),
 		"-v", auditHost + ":/audit.jsonl",
 	}
 	if needHostGateway {
