@@ -41,9 +41,9 @@
     .top {
       display: flex;
       align-items: center;
-      justify-content: space-between;
+      justify-content: flex-end;
       gap: 1rem;
-      margin-bottom: 4.5rem;
+      margin-bottom: 2rem;
       animation: rise 0.7s ease both;
     }
     .top nav {
@@ -56,15 +56,15 @@
     .hero {
       display: grid;
       gap: 2rem;
-      align-items: end;
-      min-height: calc(100vh - 8rem);
-      padding-bottom: 3rem;
+      align-items: start;
+      padding: 0.5rem 0 2.5rem;
       animation: rise 0.85s 0.08s ease both;
     }
     @media (min-width: 860px) {
       .hero {
         grid-template-columns: 1.15fr 0.85fr;
         gap: 3rem;
+        align-items: center;
       }
     }
     .brand {
@@ -191,7 +191,6 @@
 <body>
   <div class="shell">
     <header class="top">
-      <div class="brand" aria-label="Cell">Cell<span>_</span></div>
       <nav>
         <a href="https://github.com/YanChao1999/Cell">GitHub</a>
         <a href="https://github.com/YanChao1999/Cell/blob/main/ARCHITECTURE.md">Architecture</a>
@@ -201,6 +200,7 @@
 
     <section class="hero">
       <div>
+        <div class="brand" aria-label="Cell">Cell<span>_</span></div>
         <h1>Ephemeral environments for AI coding agents</h1>
         <p class="lede">
           Create → exec → destroy. Durable caches survive. Isolation fails closed.
