@@ -21,6 +21,17 @@ func TestCreateFailClosedWithoutBackend(t *testing.T) {
 	}
 }
 
+func TestCreateFailClosedMissingArtifacts(t *testing.T) {
+	lookPath = func(file string) (string, error) { return "/usr/bin/" + file, nil }
+	t.Cleanup(func() { lookPath = execLookPathStd })
+
+	r := NewWith(Config{VMM: "firecracker", ArtifactDir: t.TempDir()}, NewFirecracker())
+	err := r.Create(context.Background(), runtime.CreateOpts{CellID: "c1"})
+	if err == nil {
+		t.Fatal("expected missing kernel/rootfs error")
+	}
+}
+
 func TestValidateRequiresArtifacts(t *testing.T) {
 	lookPath = func(file string) (string, error) { return "/bin/" + file, nil }
 	t.Cleanup(func() { lookPath = execLookPathStd })
@@ -55,5 +66,22 @@ func TestValidateMissingVMM(t *testing.T) {
 	err := Config{VMM: "nope", Kernel: kernel, Rootfs: rootfs}.Validate()
 	if err == nil {
 		t.Fatal("expected missing VMM error")
+	}
+}
+
+func TestResolveDefaults(t *testing.T) {
+	dir := t.TempDir()
+	cfg := Config{ArtifactDir: dir}
+	cfg.ResolveDefaults()
+	if cfg.Kernel != filepath.Join(dir, "vmlinux") || cfg.Rootfs != filepath.Join(dir, "rootfs.ext4") {
+		t.Fatalf("got %+v", cfg)
+	}
+}
+
+func TestNewWiresFirecracker(t *testing.T) {
+	t.Setenv("CELL_MICROVM_VMM", "firecracker")
+	r := New()
+	if r.backend == nil || r.backend.Name() != "firecracker" {
+		t.Fatalf("expected firecracker backend, got %#v", r.backend)
 	}
 }

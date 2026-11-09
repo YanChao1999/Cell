@@ -30,7 +30,7 @@ Document here when introducing:
 - Auth scheme changes (e.g. mTLS required)
 - Registry/meta schema breaks
 
-None since P0 merge (`0.7.0-dev` line).
+None since the `0.7.0` line. See [RELEASE.md](RELEASE.md) to cut `v0.7.0`.
 
 ## Rollback
 

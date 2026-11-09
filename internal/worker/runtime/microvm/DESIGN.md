@@ -4,38 +4,45 @@ Goal: stronger isolation than containers for untrusted agent Cells.
 
 ## Why not fake it
 
-A stub that returns success without a VMM would be **security theater**. Selecting `CELL_RUNTIME=microvm` stays **fail-closed** (`ErrNotImplemented` / validation errors) until a real `Backend` exists.
+Selecting `CELL_RUNTIME=microvm` never silently falls back to Docker/host. Missing VMM, kernel, rootfs, or guest agent → hard error.
 
-## Package shape (landed)
+## Package shape
 
 | Piece | Role |
 |-------|------|
 | `Runtime` | Implements `runtime.Runtime`; delegates to `Backend` |
-| `Backend` | VMM-specific Boot/Exec/Halt |
-| `Config` | `CELL_MICROVM_*` paths; `Validate()` before boot |
-| `runtime.ParseName` | `CELL_RUNTIME=docker\|host\|microvm` |
+| `Firecracker` | M1 Backend — Firecracker API sock, vsock agent exec |
+| `Config` | `CELL_MICROVM_*` paths; `ResolveDefaults` + `Validate` |
+| `guestproto` | Length-prefixed JSON over vsock |
+| `cmd/cell-guest-agent` | Guest init/agent (ping / sync_workspace / exec) |
 
-## Planned Backend
+## M1 flow
 
-- Firecracker (preferred), Cloud Hypervisor, or QEMU microVM
-- Same control plane / Worker / SDK contracts — only `celld` runtime wiring changes
-- Rootfs + kernel under `~/.cell/runtime/microvm/` (or `CELL_MICROVM_DIR`)
-- Networking: vsock or tap with the same egress policies (`none` / `default` / `allowlist` via host-side proxy)
-- Lifecycle: Create boots VM, Exec via guest agent or vsock, Destroy SIGKILL + reap
+1. `scripts/fetch-microvm-artifacts.sh` → `~/.cell/runtime/microvm/{firecracker,vmlinux}`
+2. Operator supplies `rootfs.ext4` with `/usr/local/bin/cell-guest-agent` (default `init=`)
+3. `CELL_RUNTIME=microvm` → `Firecracker.Boot` configures machine, rootfs, vsock, `InstanceStart`
+4. Host waits for agent `ping`, then tar.gz-syncs the Cell workspace over vsock
+5. `Exec` → agent `sh -c` in `/workspace`; `Destroy` → shutdown + kill VMM
 
 ## Milestones
 
-| ID | Deliverable |
-|----|-------------|
-| M0 | Fail-closed Runtime + Config + `CELL_RUNTIME=microvm` wiring (this PR) |
-| M1 | Firecracker Backend boots pinned kernel/rootfs; Exec via serial/vsock agent |
-| M2 | Egress parity (`none` / allowlist host proxy); jailer / non-root where possible |
-| M3 | Artifact build pipeline + CI job (nested virt or dedicated runner) |
+| ID | Deliverable | Status |
+|----|-------------|--------|
+| M0 | Fail-closed Runtime + Config + `CELL_RUNTIME=microvm` | done |
+| M1 | Firecracker Backend + vsock guest agent + artifact fetch script | this PR |
+| M2 | Egress parity (`none` / allowlist host proxy); jailer / non-root | open |
+| M3 | Rootfs build pipeline in CI + nested-virt integration job | open |
 
-## Prerequisites (M1+)
+## Env
 
-- VMM binary on PATH (`CELL_MICROVM_VMM`)
-- Guest kernel + rootfs (`CELL_MICROVM_KERNEL`, `CELL_MICROVM_ROOTFS`)
-- Non-root VMM where possible (jailer)
+| Variable | Default |
+|----------|---------|
+| `CELL_MICROVM_DIR` | `~/.cell/runtime/microvm` |
+| `CELL_MICROVM_VMM` | `firecracker` |
+| `CELL_MICROVM_KERNEL` | `$DIR/vmlinux` |
+| `CELL_MICROVM_ROOTFS` | `$DIR/rootfs.ext4` |
+| `CELL_MICROVM_MEM_MIB` | `256` |
+| `CELL_MICROVM_VCPUS` | `1` |
+| `CELL_MICROVM_VSOCK_PORT` | `5032` |
 
-Track status in `TECH_DEBT.md`.
+Requires `/dev/kvm` and a Firecracker-compatible kernel/rootfs on the worker.

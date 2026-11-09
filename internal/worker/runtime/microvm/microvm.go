@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/YanChao1999/Cell/api"
 	"github.com/YanChao1999/Cell/internal/worker/runtime"
@@ -24,9 +25,30 @@ type Runtime struct {
 	backend Backend
 }
 
-// New returns a microVM Runtime using ConfigFromEnv and no Backend (fail-closed).
+// New returns a microVM Runtime. When CELL_MICROVM_VMM is firecracker (default),
+// a Firecracker Backend is wired; Boot still fail-closes until artifacts validate.
 func New() *Runtime {
-	return NewWith(ConfigFromEnv(), nil)
+	cfg := ConfigFromEnv()
+	cfg.ResolveDefaults()
+	var b Backend
+	switch baseName(cfg.VMM) {
+	case "firecracker", "":
+		b = NewFirecracker()
+	default:
+		// Unknown VMM: leave backend nil → ErrNotImplemented (fail closed).
+	}
+	return NewWith(cfg, b)
+}
+
+func baseName(vmm string) string {
+	vmm = strings.TrimSpace(vmm)
+	if vmm == "" {
+		return ""
+	}
+	if i := strings.LastIndex(vmm, "/"); i >= 0 {
+		vmm = vmm[i+1:]
+	}
+	return strings.ToLower(vmm)
 }
 
 // NewWith wires an explicit config and backend (backend may be nil).
@@ -40,7 +62,7 @@ func (r *Runtime) Create(ctx context.Context, opts runtime.CreateOpts) error {
 		return fmt.Errorf("%w: nil microvm runtime", runtime.ErrNotImplemented)
 	}
 	if r.backend == nil {
-		return fmt.Errorf("%w: microVM backend (set CELL_RUNTIME=docker until Firecracker/CH ships)", runtime.ErrNotImplemented)
+		return fmt.Errorf("%w: microVM backend (unsupported CELL_MICROVM_VMM; use firecracker)", runtime.ErrNotImplemented)
 	}
 	if err := r.cfg.Validate(); err != nil {
 		return err

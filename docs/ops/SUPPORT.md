@@ -7,7 +7,7 @@ Cell is an execution boundary for untrusted agent work. This document states wha
 | Area | What works |
 |------|------------|
 | Topology | Single-node `mode=all`; 1-control + N-worker compose (`docker-compose.yml`) |
-| Runtime | Docker sandbox (default when Docker is available); explicit `CELL_RUNTIME=host` for CI/dev only |
+| Runtime | Docker sandbox (default when Docker is available); explicit `CELL_RUNTIME=host` for CI/dev only; `CELL_RUNTIME=microvm` when Firecracker + kernel/rootfs/agent artifacts are present |
 | Auth | Shared `CELL_WORKER_TOKEN` bootstrap; short-lived HMAC tokens via `POST /v1/auth/token`; optional `CELL_WORKER_TOKEN_PREV` rotation |
 | Network policy | `default` / `none` / `allowlist` (allowlist via `cell-egress` sidecar) |
 | Observability | `GET /metrics`, `GET /metrics/ui`; optional Prometheus + Grafana (`docker-compose.obs.yml`, GHCR mirrors) |
@@ -18,7 +18,7 @@ Cell is an execution boundary for untrusted agent work. This document states wha
 
 | Area | Status |
 |------|--------|
-| MicroVM isolation | Fail-closed stub; Firecracker/CH/QEMU mainline under construction |
+| MicroVM isolation | Firecracker M1 (boot/exec/destroy via vsock agent) — requires `/dev/kvm` + operator rootfs; no egress allowlist parity yet (M2) |
 | mTLS control↔worker | Planned; HMAC tokens are the current trust boundary |
 | Multi-region / HA control | Single control process; restart recovers registry from disk |
 | Windows / macOS workers | Not validated |

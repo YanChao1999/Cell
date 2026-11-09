@@ -441,6 +441,8 @@ func dockerRunArgs(opts runtime.CreateOpts, network, name string) ([]string, err
 		"--read-only",
 		"--tmpfs", "/tmp:rw,nosuid,nodev,exec,size=1g",
 		"--tmpfs", "/var/tmp:rw,nosuid,nodev,exec,size=256m",
+		// Default Docker seccomp + pids limit shrink breakout / fork-bomb blast radius.
+		"--pids-limit", dockerPidsLimit(),
 		"-v", opts.Workspace + ":/workspace",
 		"-w", "/workspace",
 		"-e", "HOME=/workspace",
@@ -512,6 +514,13 @@ func limitArgs(limits api.Limits) []string {
 		args = append(args, "--storage-opt", "size="+dockerDisk(limits.Disk))
 	}
 	return args
+}
+
+func dockerPidsLimit() string {
+	if v := strings.TrimSpace(os.Getenv("CELL_DOCKER_PIDS_LIMIT")); v != "" {
+		return v
+	}
+	return "256"
 }
 
 func dockerMemory(m string) string {

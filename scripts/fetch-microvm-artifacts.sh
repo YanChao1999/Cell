@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# Fetch Firecracker + recommended kernel into CELL_MICROVM_DIR (default ~/.cell/runtime/microvm).
+# Rootfs must still be built (see docs below) — we only fetch VMM + kernel.
+set -euo pipefail
+
+DIR="${CELL_MICROVM_DIR:-${HOME}/.cell/runtime/microvm}"
+FC_VERSION="${CELL_FIRECRACKER_VERSION:-v1.11.0}"
+ARCH="$(uname -m)"
+case "$ARCH" in
+  x86_64|amd64) ARCH=x86_64 ;;
+  aarch64|arm64) ARCH=aarch64 ;;
+  *) echo "unsupported arch: $ARCH" >&2; exit 1 ;;
+esac
+
+mkdir -p "$DIR"
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
+
+echo "fetching firecracker ${FC_VERSION} (${ARCH}) → ${DIR}"
+BASE="https://github.com/firecracker-microvm/firecracker/releases/download/${FC_VERSION}"
+curl -fsSL "${BASE}/firecracker-${FC_VERSION}-${ARCH}.tgz" -o "$TMP/fc.tgz"
+tar -xzf "$TMP/fc.tgz" -C "$TMP"
+# Release layout: release-${VERSION}-${ARCH}/firecracker-${VERSION}-${ARCH}
+FC_BIN="$(find "$TMP" -type f -name 'firecracker-*' ! -name '*.tgz' | head -n1)"
+install -m 0755 "$FC_BIN" "$DIR/firecracker"
+
+# Official CI kernels are published alongside firecracker releases as vmlinux.
+# Prefer an operator-provided kernel; otherwise try the release asset name used by FC docs.
+if [[ ! -f "$DIR/vmlinux" ]]; then
+  if curl -fsSL "${BASE}/vmlinux-${ARCH}.bin" -o "$DIR/vmlinux" 2>/dev/null; then
+    echo "downloaded vmlinux-${ARCH}.bin"
+  else
+    echo "NOTE: place a Firecracker-compatible vmlinux at ${DIR}/vmlinux" >&2
+  fi
+fi
+
+cat <<EOF
+Artifacts dir: $DIR
+  firecracker → $DIR/firecracker
+  kernel      → $DIR/vmlinux   (required)
+  rootfs      → $DIR/rootfs.ext4 (required; must include /usr/local/bin/cell-guest-agent as init)
+
+Build a minimal rootfs (example):
+  CGO_ENABLED=0 go build -o cell-guest-agent ./cmd/cell-guest-agent
+  # then pack agent + busybox/alpine into an ext4 image named rootfs.ext4
+
+Env:
+  export PATH=\"$DIR:\$PATH\"
+  export CELL_RUNTIME=microvm
+  export CELL_MICROVM_DIR=$DIR
+EOF

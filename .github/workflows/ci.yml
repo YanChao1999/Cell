@@ -30,13 +30,14 @@ jobs:
           go build -o bin/celld ./cmd/celld
           go build -o bin/cell ./cmd/cell
           CGO_ENABLED=0 go build -o bin/cell-egress ./cmd/cell-egress
+          CGO_ENABLED=0 go build -o bin/cell-guest-agent ./cmd/cell-guest-agent
 
       - name: Unit tests (worker packages)
         run: |
           go test ./internal/worker/cache/ ./internal/worker/auth/ ./internal/worker/envtemplate/ \
             ./internal/worker/egress/ ./internal/worker/manager/ ./internal/worker/httpserver/ \
             ./internal/worker/source/git/ ./internal/worker/runtime/ ./internal/worker/runtime/docker/ \
-            ./internal/worker/runtime/microvm/ \
+            ./internal/worker/runtime/microvm/ ./internal/worker/runtime/microvm/guestproto/ \
             ./internal/worker/remote/ ./internal/worker/peers/ \
             ./internal/control/registry/ ./internal/control/metrics/ ./internal/version/
 

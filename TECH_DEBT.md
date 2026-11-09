@@ -34,23 +34,26 @@ Cell is an execution boundary for untrusted agent work. Security is not a later 
 
 ## Still open
 
-### P1 — internal production (in progress)
+### P1 — internal production (landed; cut `v0.7.0` via `docs/ops/RELEASE.md`)
 Track: ops / security ops / isolation / product. Docs under `docs/ops/`, `docs/security/`.
 
-| Track | Done in tree | Still open |
-|-------|--------------|------------|
-| Ops | `docs/ops/PLAYBOOK.md`, `UPGRADE.md`; compose cluster CI job; single `internal/version` | Tagged releases + image promotion script |
-| Security ops | `docs/security/THREAT_MODEL.md`, `ESCAPE_CHECKLIST.md`; `govulncheck` in CI | Dependabot/renovate; digest-pinned base images |
-| Isolation | MicroVM M0: `Backend`/`Config`/`CELL_RUNTIME=microvm` fail-closed wiring | M1+ Firecracker Backend; further Docker harden |
-| Product | `docs/ops/SUPPORT.md` (supported / not supported, no SLA) | Expand runbooks from incidents |
+| Track | Landed |
+|-------|--------|
+| Ops | PLAYBOOK / UPGRADE / RELEASE; compose CI; `scripts/release.sh`; `internal/version` |
+| Security ops | Threat model + escape checklist; `govulncheck`; Dependabot; digest-pinned golang bases |
+| Isolation | MicroVM M1 (Firecracker + guest-agent); Docker `--pids-limit` |
+| Product | SUPPORT matrix (no SLA); Pages isolation demo |
+
+Post-P1: MicroVM M2/M3, mTLS, expand runbooks from incidents, registry image promotion automation.
 
 ### MicroVM backend (real VMM)
-- M0 landed (fail-closed). M1+: Firecracker / Cloud Hypervisor / QEMU `Backend`. See `internal/worker/runtime/microvm/DESIGN.md`.
+- M0–M1 landed (Firecracker + `cell-guest-agent` vsock). M2+: egress/jailer; M3 rootfs pipeline. See `internal/worker/runtime/microvm/DESIGN.md`.
 
 ### Hardening polish
 - Seed size/latency tuning; optional content hashing of seeded files.
 - Stronger userns than daemon remap + `--user` (rootless/podman paths).
 - Harder disk caps (project quotas) where operators can enable them.
+- Dependabot + digest-pinned `golang` base images landed; keep digests current.
 
 ### Phase 5 (remaining)
 - Cross-platform mirror lock if Windows workers appear.
