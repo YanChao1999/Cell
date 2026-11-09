@@ -12,13 +12,21 @@ import (
 	"sync"
 	"time"
 
+	"log"
+
 	"github.com/YanChao1999/Cell/api"
 	"github.com/YanChao1999/Cell/internal/worker/cache"
 	"github.com/YanChao1999/Cell/internal/worker/envtemplate"
+	"github.com/YanChao1999/Cell/internal/worker/remote"
 	"github.com/YanChao1999/Cell/internal/worker/runtime"
 	"github.com/YanChao1999/Cell/internal/worker/source/git"
 	"github.com/YanChao1999/Cell/internal/workerapi"
 )
+
+// PeerFinder locates a remote worker endpoint that holds a warm cache key.
+type PeerFinder interface {
+	EndpointForCache(ctx context.Context, key, selfID string) (string, error)
+}
 
 // LocalWorker manages Cells on the local machine.
 type LocalWorker struct {
@@ -31,6 +39,8 @@ type LocalWorker struct {
 	envs       *envtemplate.Loader
 	cache      *cache.Layout
 	cacheIndex *cache.Index
+	peers      PeerFinder
+	token      string
 	mu         sync.Mutex
 	cells      map[string]*workerapi.Cell
 }
@@ -47,6 +57,8 @@ type Options struct {
 	EnvLoader      *envtemplate.Loader
 	CacheIndex     *cache.Index
 	CacheLayout    *cache.Layout
+	Peers          PeerFinder // optional cross-node cache pull
+	WorkerToken    string     // Bearer token for pulling from peers
 }
 
 // New creates a LocalWorker.
@@ -109,11 +121,24 @@ func New(opts Options) (*LocalWorker, error) {
 		envs:       opts.EnvLoader,
 		cache:      layout,
 		cacheIndex: opts.CacheIndex,
+		peers:      opts.Peers,
+		token:      opts.WorkerToken,
 		cells:      make(map[string]*workerapi.Cell),
 	}, nil
 }
 
 func (w *LocalWorker) ID() string { return w.id }
+
+// CacheLayout returns the durable cache layout (for worker RPC export).
+func (w *LocalWorker) CacheLayout() *cache.Layout { return w.cache }
+
+// WarmCacheKeys returns host keys that currently hold files (for heartbeats).
+func (w *LocalWorker) WarmCacheKeys() []string {
+	if w.cache == nil {
+		return nil
+	}
+	return w.cache.WarmKeys()
+}
 
 func (w *LocalWorker) Capacity() workerapi.Capacity {
 	w.mu.Lock()
@@ -164,6 +189,8 @@ func (w *LocalWorker) CreateCell(ctx context.Context, req api.CreateCellRequest)
 		w.removeCell(id)
 		return nil, err
 	}
+
+	w.pullColdCaches(ctx, mounts)
 
 	for _, m := range mounts {
 		w.cacheIndex.Add(m.HostKey)
@@ -436,6 +463,46 @@ func (w *LocalWorker) DestroyCell(ctx context.Context, cellID string) error {
 	}
 	w.removeCell(cellID)
 	return nil
+}
+
+// pullColdCaches best-effort replicates warm peer caches for cold local keys.
+func (w *LocalWorker) pullColdCaches(ctx context.Context, mounts []cache.Mount) {
+	if w.peers == nil || w.cache == nil || len(mounts) == 0 {
+		return
+	}
+	seen := make(map[string]struct{})
+	for _, m := range mounts {
+		key := m.HostKey
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		if cache.DirIsWarm(m.HostAbs) {
+			continue
+		}
+		ep, err := w.peers.EndpointForCache(ctx, key, w.id)
+		if err != nil {
+			log.Printf("manager: cache peer lookup %s: %v", key, err)
+			continue
+		}
+		if ep == "" {
+			continue
+		}
+		rw, err := remote.New("peer-"+key, ep, remote.Options{Token: w.token})
+		if err != nil {
+			log.Printf("manager: cache peer client %s: %v", key, err)
+			continue
+		}
+		if err := rw.PullCache(ctx, key, w.cache); err != nil {
+			log.Printf("manager: cache pull %s from %s: %v", key, ep, err)
+			continue
+		}
+		log.Printf("manager: pulled cache %s from %s", key, ep)
+		w.cacheIndex.Add(key)
+	}
 }
 
 func (w *LocalWorker) removeCell(id string) {

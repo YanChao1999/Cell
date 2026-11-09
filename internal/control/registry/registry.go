@@ -1,7 +1,7 @@
 // Package registry tracks live workers for Phase 5 multi-node placement.
 //
 // Workers register and heartbeat; stale workers are dropped after TTL so the
-// scheduler only places onto healthy peers. Cross-node cache pull is still open.
+// scheduler only places onto healthy peers.
 package registry
 
 import (

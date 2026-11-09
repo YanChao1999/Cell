@@ -18,6 +18,7 @@ import (
 	"github.com/YanChao1999/Cell/internal/control/meta"
 	"github.com/YanChao1999/Cell/internal/control/registry"
 	"github.com/YanChao1999/Cell/internal/control/scheduler"
+	"github.com/YanChao1999/Cell/internal/worker/auth"
 	"github.com/YanChao1999/Cell/internal/worker/remote"
 )
 
@@ -25,20 +26,31 @@ const defaultTTL = 30 * time.Minute
 
 // Server is the control-plane HTTP API.
 type Server struct {
-	meta      *meta.Store
-	scheduler *scheduler.Scheduler
-	registry  *registry.Registry
-	mux       *http.ServeMux
+	meta        *meta.Store
+	scheduler   *scheduler.Scheduler
+	registry    *registry.Registry
+	workerToken string
+	mux         *http.ServeMux
+}
+
+// Options configure the control API.
+type Options struct {
+	WorkerToken string // shared Bearer for register/heartbeat and remote worker RPC
 }
 
 // New constructs the API server (Phase 5 worker registry enabled).
 func New(m *meta.Store, sched *scheduler.Scheduler) *Server {
-	return NewWithRegistry(m, sched, registry.New(45*time.Second))
+	return NewWithOptions(m, sched, registry.New(45*time.Second), Options{})
 }
 
 // NewWithRegistry constructs the API server with an explicit worker registry.
 func NewWithRegistry(m *meta.Store, sched *scheduler.Scheduler, reg *registry.Registry) *Server {
-	s := &Server{meta: m, scheduler: sched, registry: reg, mux: http.NewServeMux()}
+	return NewWithOptions(m, sched, reg, Options{})
+}
+
+// NewWithOptions constructs the API server with registry and auth options.
+func NewWithOptions(m *meta.Store, sched *scheduler.Scheduler, reg *registry.Registry, opts Options) *Server {
+	s := &Server{meta: m, scheduler: sched, registry: reg, workerToken: opts.WorkerToken, mux: http.NewServeMux()}
 	s.routes()
 	return s
 }
@@ -123,6 +135,10 @@ func (s *Server) handleWorkerRegister(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotImplemented, "worker registry disabled")
 		return
 	}
+	if !auth.Authorize(r, s.workerToken) {
+		writeErr(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 	var req registry.RegisterRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
 		writeErr(w, http.StatusBadRequest, err.Error())
@@ -143,6 +159,10 @@ func (s *Server) handleWorkerRegister(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleWorkerHeartbeat(w http.ResponseWriter, r *http.Request) {
 	if s.registry == nil {
 		writeErr(w, http.StatusNotImplemented, "worker registry disabled")
+		return
+	}
+	if !auth.Authorize(r, s.workerToken) {
+		writeErr(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 	id := r.PathValue("id")
@@ -175,7 +195,7 @@ func (s *Server) syncRemoteWorker(info *registry.Info) error {
 		}
 		return nil
 	}
-	rw, err := remote.New(info.ID, ep)
+	rw, err := remote.New(info.ID, ep, remote.Options{Token: s.workerToken})
 	if err != nil {
 		return err
 	}

@@ -33,10 +33,10 @@ jobs:
 
       - name: Unit tests (worker packages)
         run: |
-          go test ./internal/worker/cache/ ./internal/worker/envtemplate/ \
-            ./internal/worker/egress/ ./internal/worker/manager/ \
+          go test ./internal/worker/cache/ ./internal/worker/auth/ ./internal/worker/envtemplate/ \
+            ./internal/worker/egress/ ./internal/worker/manager/ ./internal/worker/httpserver/ \
             ./internal/worker/source/git/ ./internal/worker/runtime/docker/ \
-            ./internal/worker/remote/ ./internal/control/registry/
+            ./internal/worker/remote/ ./internal/worker/peers/ ./internal/control/registry/
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v7
