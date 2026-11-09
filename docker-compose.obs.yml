@@ -3,18 +3,18 @@
 # Prefer the built-in UI first (no Hub pull):
 #   open http://127.0.0.1:18080/metrics/ui
 #
-# Full stack (needs registry access — Docker Hub often times out on IPv6):
+# Full stack (images mirrored to GitHub Container Registry — avoids Docker Hub):
 #   docker compose up --build -d
 #   docker compose -f docker-compose.yml -f docker-compose.obs.yml up -d
 #   Grafana  http://127.0.0.1:13000  (admin / cell)
 #   Prometheus http://127.0.0.1:19090
 #
-# Images use quay.io / grafana.com where possible to avoid docker.io IPv6 hangs.
-# Override with CELL_PROM_IMAGE / CELL_GRAFANA_IMAGE if you have a mirror.
+# Defaults pull from ghcr.io/<owner>/cell-obs-* (see .github/workflows/mirror-obs-images.yml).
+# Override with CELL_PROM_IMAGE / CELL_GRAFANA_IMAGE if needed.
 
 services:
   prometheus:
-    image: ${CELL_PROM_IMAGE:-quay.io/prometheus/prometheus:v2.55.1}
+    image: ${CELL_PROM_IMAGE:-ghcr.io/yanchao1999/cell-obs-prometheus:v2.55.1}
     network_mode: host
     volumes:
       - ./deploy/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
@@ -26,9 +26,7 @@ services:
       - --web.enable-lifecycle
 
   grafana:
-    # Official Grafana image; if docker.io fails, set e.g.
-    # CELL_GRAFANA_IMAGE=docker.m.daocloud.io/grafana/grafana:11.3.0
-    image: ${CELL_GRAFANA_IMAGE:-docker.io/grafana/grafana:11.3.0}
+    image: ${CELL_GRAFANA_IMAGE:-ghcr.io/yanchao1999/cell-obs-grafana:11.3.0}
     network_mode: host
     environment:
       GF_SECURITY_ADMIN_USER: admin

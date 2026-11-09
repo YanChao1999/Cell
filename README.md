@@ -172,7 +172,7 @@ Control listens on `localhost:18080`; workers register over HTTP and receive Cre
 
 Built-in (no extra images): open **http://127.0.0.1:18080/metrics/ui** while control is running.
 
-Optional Prometheus + Grafana (needs registry pull; Hub IPv6 often fails — use a mirror via `CELL_GRAFANA_IMAGE` / `CELL_PROM_IMAGE`):
+Optional Prometheus + Grafana (images mirrored to **ghcr.io** via `Mirror obs images` workflow; override with `CELL_GRAFANA_IMAGE` / `CELL_PROM_IMAGE` if needed):
 
 ```bash
 docker compose up --build -d

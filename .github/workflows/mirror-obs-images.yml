@@ -1,0 +1,66 @@
+# Mirror Prometheus + Grafana to ghcr.io so local compose can skip Docker Hub
+# (Hub often fails with IPv6 timeouts). Pull via:
+#   docker compose -f docker-compose.yml -f docker-compose.obs.yml up -d
+#
+# Packages are published public under this account after each mirror.
+
+name: Mirror obs images
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - docker-compose.obs.yml
+      - .github/workflows/mirror-obs-images.yml
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  PROM_SRC: quay.io/prometheus/prometheus:v2.55.1
+  PROM_TAG: v2.55.1
+  GRAFANA_SRC: docker.io/grafana/grafana:11.3.0
+  GRAFANA_TAG: "11.3.0"
+
+jobs:
+  mirror:
+    name: Mirror to GHCR
+    runs-on: ubuntu-latest
+    steps:
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Copy Prometheus → ghcr.io
+        run: |
+          OWNER=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')
+          DST="ghcr.io/${OWNER}/cell-obs-prometheus:${PROM_TAG}"
+          docker buildx imagetools create --tag "$DST" "$PROM_SRC"
+          echo "mirrored $PROM_SRC → $DST"
+
+      - name: Copy Grafana → ghcr.io
+        run: |
+          OWNER=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')
+          DST="ghcr.io/${OWNER}/cell-obs-grafana:${GRAFANA_TAG}"
+          docker buildx imagetools create --tag "$DST" "$GRAFANA_SRC"
+          echo "mirrored $GRAFANA_SRC → $DST"
+
+      - name: Make packages public
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          OWNER=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')
+          for PKG in cell-obs-prometheus cell-obs-grafana; do
+            gh api --method PUT \
+              "/user/packages/container/${PKG}/visibility" \
+              -f visibility=public \
+              || gh api --method PUT \
+              "/orgs/${OWNER}/packages/container/${PKG}/visibility" \
+              -f visibility=public \
+              || echo "visibility for ${PKG}: set manually if needed (Settings → Packages)"
+          done
