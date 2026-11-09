@@ -15,9 +15,9 @@ import (
 
 // Server serves worker RPC routes.
 type Server struct {
-	worker  *manager.LocalWorker
-	issuer  *auth.Issuer
-	mux     *http.ServeMux
+	worker *manager.LocalWorker
+	issuer *auth.Issuer
+	mux    *http.ServeMux
 }
 
 // Options configure the worker HTTP server.

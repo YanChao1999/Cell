@@ -6,21 +6,17 @@ import (
 	"net/http"
 	"sort"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 )
 
 // Registry holds process counters and latency sums (no external deps).
 type Registry struct {
-	createOK, createErr atomic.Uint64
-	execOK, execErr     atomic.Uint64
+	createOK, createErr   atomic.Uint64
+	execOK, execErr       atomic.Uint64
 	destroyOK, destroyErr atomic.Uint64
-
-	mu sync.Mutex
-	// latency in microseconds, summed + counted for average (simple)
-	createSumUs, createN atomic.Uint64
-	execSumUs, execN     atomic.Uint64
+	createSumUs, createN  atomic.Uint64
+	execSumUs, execN      atomic.Uint64
 }
 
 // New returns an empty registry.
@@ -28,32 +24,25 @@ func New() *Registry { return &Registry{} }
 
 // ObserveCreate records a create attempt.
 func (r *Registry) ObserveCreate(d time.Duration, err error) {
-	if r == nil {
-		return
-	}
-	us := uint64(d / time.Microsecond)
-	r.createSumUs.Add(us)
-	r.createN.Add(1)
-	if err != nil {
-		r.createErr.Add(1)
-		return
-	}
-	r.createOK.Add(1)
+	r.observe(d, err, &r.createSumUs, &r.createN, &r.createOK, &r.createErr)
 }
 
 // ObserveExec records an exec attempt.
 func (r *Registry) ObserveExec(d time.Duration, err error) {
+	r.observe(d, err, &r.execSumUs, &r.execN, &r.execOK, &r.execErr)
+}
+
+func (r *Registry) observe(d time.Duration, err error, sumUs, n, ok, fail *atomic.Uint64) {
 	if r == nil {
 		return
 	}
-	us := uint64(d / time.Microsecond)
-	r.execSumUs.Add(us)
-	r.execN.Add(1)
+	sumUs.Add(uint64(d / time.Microsecond))
+	n.Add(1)
 	if err != nil {
-		r.execErr.Add(1)
+		fail.Add(1)
 		return
 	}
-	r.execOK.Add(1)
+	ok.Add(1)
 }
 
 // ObserveDestroy records a destroy attempt.
