@@ -4,10 +4,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func TestMiddlewareDisabled(t *testing.T) {
-	h := Middleware("")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := Middleware(nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	rr := httptest.NewRecorder()
@@ -18,7 +19,8 @@ func TestMiddlewareDisabled(t *testing.T) {
 }
 
 func TestMiddlewareRequiresBearer(t *testing.T) {
-	h := Middleware("s3cret")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	iss := NewIssuer("s3cret", "")
+	h := Middleware(iss, ScopeWorker)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	rr := httptest.NewRecorder()
@@ -34,18 +36,33 @@ func TestMiddlewareRequiresBearer(t *testing.T) {
 	if rr.Code != http.StatusNoContent {
 		t.Fatalf("want 204, got %d", rr.Code)
 	}
+
+	tok, _, err := iss.Issue(ScopeWorker, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req = httptest.NewRequest(http.MethodGet, "/", nil)
+	SetBearer(req.Header, tok)
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("short token: want 204, got %d", rr.Code)
+	}
 }
 
 func TestAuthorize(t *testing.T) {
+	iss := NewIssuer("tok", "")
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	if !Authorize(req, "") {
-		t.Fatal("empty expected should allow")
+	if Authorize(req, nil) {
+		// nil issuer = disabled = allow
+	} else {
+		t.Fatal("nil issuer should allow")
 	}
-	if Authorize(req, "tok") {
+	if Authorize(req, iss) {
 		t.Fatal("missing bearer should deny")
 	}
 	SetBearer(req.Header, "tok")
-	if !Authorize(req, "tok") {
+	if !Authorize(req, iss, ScopeWorker) {
 		t.Fatal("matching bearer should allow")
 	}
 }

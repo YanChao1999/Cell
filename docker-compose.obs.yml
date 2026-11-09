@@ -1,0 +1,48 @@
+# Optional Prometheus + Grafana for Cell /metrics (host networking).
+#
+# Prefer the built-in UI first (no Hub pull):
+#   open http://127.0.0.1:18080/metrics/ui
+#
+# Full stack (images mirrored to GitHub Container Registry — avoids Docker Hub):
+#   docker compose up --build -d
+#   docker compose -f docker-compose.yml -f docker-compose.obs.yml up -d
+#   Grafana  http://127.0.0.1:13000  (admin / cell)
+#   Prometheus http://127.0.0.1:19090
+#
+# Defaults pull from ghcr.io/<owner>/cell-obs-* (see .github/workflows/mirror-obs-images.yml).
+# Override with CELL_PROM_IMAGE / CELL_GRAFANA_IMAGE if needed.
+
+services:
+  prometheus:
+    image: ${CELL_PROM_IMAGE:-ghcr.io/yanchao1999/cell-obs-prometheus:v2.55.1}
+    network_mode: host
+    volumes:
+      - ./deploy/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prom-data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.listen-address=127.0.0.1:19090
+      - --web.enable-lifecycle
+
+  grafana:
+    image: ${CELL_GRAFANA_IMAGE:-ghcr.io/yanchao1999/cell-obs-grafana:11.3.0}
+    network_mode: host
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: cell
+      GF_SERVER_HTTP_ADDR: 127.0.0.1
+      GF_SERVER_HTTP_PORT: "13000"
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/cell.json
+    volumes:
+      - ./deploy/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+
+volumes:
+  prom-data:
+  grafana-data:

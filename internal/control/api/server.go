@@ -16,6 +16,7 @@ import (
 
 	cellapi "github.com/YanChao1999/Cell/api"
 	"github.com/YanChao1999/Cell/internal/control/meta"
+	"github.com/YanChao1999/Cell/internal/control/metrics"
 	"github.com/YanChao1999/Cell/internal/control/registry"
 	"github.com/YanChao1999/Cell/internal/control/scheduler"
 	"github.com/YanChao1999/Cell/internal/worker/auth"
@@ -26,16 +27,20 @@ const defaultTTL = 30 * time.Minute
 
 // Server is the control-plane HTTP API.
 type Server struct {
-	meta        *meta.Store
-	scheduler   *scheduler.Scheduler
-	registry    *registry.Registry
-	workerToken string
-	mux         *http.ServeMux
+	meta      *meta.Store
+	scheduler *scheduler.Scheduler
+	registry  *registry.Registry
+	issuer    *auth.Issuer
+	metrics   *metrics.Registry
+	mux       *http.ServeMux
 }
 
 // Options configure the control API.
 type Options struct {
-	WorkerToken string // shared Bearer for register/heartbeat and remote worker RPC
+	WorkerToken     string // long-lived HMAC/bootstrap secret
+	WorkerTokenPrev string // optional previous secret for rotation
+	Issuer          *auth.Issuer
+	Metrics         *metrics.Registry
 }
 
 // New constructs the API server (Phase 5 worker registry enabled).
@@ -50,7 +55,15 @@ func NewWithRegistry(m *meta.Store, sched *scheduler.Scheduler, reg *registry.Re
 
 // NewWithOptions constructs the API server with registry and auth options.
 func NewWithOptions(m *meta.Store, sched *scheduler.Scheduler, reg *registry.Registry, opts Options) *Server {
-	s := &Server{meta: m, scheduler: sched, registry: reg, workerToken: opts.WorkerToken, mux: http.NewServeMux()}
+	iss := opts.Issuer
+	if iss == nil {
+		iss = auth.NewIssuer(opts.WorkerToken, opts.WorkerTokenPrev)
+	}
+	met := opts.Metrics
+	if met == nil {
+		met = metrics.New()
+	}
+	s := &Server{meta: m, scheduler: sched, registry: reg, issuer: iss, metrics: met, mux: http.NewServeMux()}
 	s.routes()
 	return s
 }
@@ -60,6 +73,9 @@ func (s *Server) Registry() *registry.Registry { return s.registry }
 
 func (s *Server) routes() {
 	s.mux.HandleFunc("GET /health", s.handleHealth)
+	s.mux.Handle("GET /metrics", s.metrics.Handler())
+	s.mux.Handle("GET /metrics/ui", metrics.UIHandler())
+	s.mux.HandleFunc("POST /v1/auth/token", s.handleIssueToken)
 	s.mux.HandleFunc("POST /v1/cells", s.handleCreate)
 	s.mux.HandleFunc("GET /v1/cells", s.handleList)
 	s.mux.HandleFunc("GET /v1/cells/{id}", s.handleGet)
@@ -73,6 +89,9 @@ func (s *Server) routes() {
 
 // Handler returns the HTTP handler.
 func (s *Server) Handler() http.Handler { return s.mux }
+
+// Issuer returns the auth issuer (may be disabled).
+func (s *Server) Issuer() *auth.Issuer { return s.issuer }
 
 // ListenAndServe serves on a Unix domain socket path.
 func (s *Server) ListenAndServe(socketPath string) error {
@@ -89,7 +108,7 @@ func (s *Server) ListenAndServe(socketPath string) error {
 	defer func() { _ = ln.Close() }()
 	_ = os.Chmod(socketPath, 0o600)
 	log.Printf("celld listening on unix://%s", socketPath)
-	return http.Serve(ln, s.mux)
+	return http.Serve(ln, s.Handler())
 }
 
 // ListenAndServeHTTP serves the control API on a TCP address (e.g. ":8080").
@@ -99,7 +118,7 @@ func (s *Server) ListenAndServeHTTP(addr string) error {
 		return err
 	}
 	log.Printf("celld listening on http://%s", ln.Addr().String())
-	return http.Serve(ln, s.mux)
+	return http.Serve(ln, s.Handler())
 }
 
 // removeStaleSocket deletes only a dead socket. A live listener is left alone
@@ -130,12 +149,59 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+type issueTokenRequest struct {
+	Scope string `json:"scope"`
+	TTL   string `json:"ttl,omitempty"` // e.g. "15m"
+}
+
+type issueTokenResponse struct {
+	Token     string    `json:"token"`
+	Scope     string    `json:"scope"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
+func (s *Server) handleIssueToken(w http.ResponseWriter, r *http.Request) {
+	if s.issuer == nil || !s.issuer.Enabled() {
+		writeErr(w, http.StatusNotImplemented, "auth disabled")
+		return
+	}
+	// Bootstrap with static secret or any valid worker-scoped credential.
+	if !auth.Authorize(r, s.issuer, auth.ScopeWorker) {
+		writeErr(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	var req issueTokenRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	scope := strings.TrimSpace(req.Scope)
+	if scope == "" {
+		scope = auth.ScopeWorker
+	}
+	ttl := auth.DefaultTTL
+	if req.TTL != "" {
+		d, err := time.ParseDuration(req.TTL)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid ttl")
+			return
+		}
+		ttl = d
+	}
+	tok, exp, err := s.issuer.Issue(scope, ttl)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, issueTokenResponse{Token: tok, Scope: scope, ExpiresAt: exp})
+}
+
 func (s *Server) handleWorkerRegister(w http.ResponseWriter, r *http.Request) {
 	if s.registry == nil {
 		writeErr(w, http.StatusNotImplemented, "worker registry disabled")
 		return
 	}
-	if !auth.Authorize(r, s.workerToken) {
+	if !auth.Authorize(r, s.issuer, auth.ScopeWorker) {
 		writeErr(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
@@ -161,7 +227,7 @@ func (s *Server) handleWorkerHeartbeat(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotImplemented, "worker registry disabled")
 		return
 	}
-	if !auth.Authorize(r, s.workerToken) {
+	if !auth.Authorize(r, s.issuer, auth.ScopeWorker) {
 		writeErr(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
@@ -180,6 +246,11 @@ func (s *Server) handleWorkerHeartbeat(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, info)
 }
 
+// SyncRemoteWorker ensures HTTP-endpoint workers are schedulable for Place/Exec.
+func (s *Server) SyncRemoteWorker(info *registry.Info) error {
+	return s.syncRemoteWorker(info)
+}
+
 // syncRemoteWorker ensures HTTP-endpoint workers are schedulable for Place/Exec.
 func (s *Server) syncRemoteWorker(info *registry.Info) error {
 	if info == nil || s.scheduler == nil {
@@ -189,13 +260,17 @@ func (s *Server) syncRemoteWorker(info *registry.Info) error {
 	if !strings.HasPrefix(ep, "http://") && !strings.HasPrefix(ep, "https://") {
 		return nil // unix/local workers are already in the scheduler process
 	}
+	tok := s.workerRPCToken()
 	if existing, ok := s.scheduler.Get(info.ID); ok {
 		if rw, ok := existing.(*remote.Worker); ok {
 			rw.UpdateCapacity(info.MaxCells, info.UsedCells, info.CacheKeys)
+			if tok != "" {
+				rw.SetToken(tok)
+			}
 		}
 		return nil
 	}
-	rw, err := remote.New(info.ID, ep, remote.Options{Token: s.workerToken})
+	rw, err := remote.New(info.ID, ep, remote.Options{Token: tok})
 	if err != nil {
 		return err
 	}
@@ -203,6 +278,17 @@ func (s *Server) syncRemoteWorker(info *registry.Info) error {
 	s.scheduler.Register(rw)
 	log.Printf("api: scheduled remote worker id=%s endpoint=%s", info.ID, ep)
 	return nil
+}
+
+func (s *Server) workerRPCToken() string {
+	if s.issuer == nil || !s.issuer.Enabled() {
+		return ""
+	}
+	tok, _, err := s.issuer.Issue(auth.ScopeWorker, auth.DefaultTTL)
+	if err != nil {
+		return s.issuer.Secret()
+	}
+	return tok
 }
 
 func (s *Server) handleWorkerList(w http.ResponseWriter, r *http.Request) {
@@ -228,6 +314,13 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) createCell(ctx context.Context, req cellapi.CreateCellRequest) (*cellapi.CellInfo, error) {
+	start := time.Now()
+	info, err := s.createCellInner(ctx, req)
+	s.metrics.ObserveCreate(time.Since(start), err)
+	return info, err
+}
+
+func (s *Server) createCellInner(ctx context.Context, req cellapi.CreateCellRequest) (*cellapi.CellInfo, error) {
 	worker, err := s.scheduler.Place(req)
 	if err != nil {
 		return nil, err
@@ -301,6 +394,13 @@ func (s *Server) destroyCell(ctx context.Context, id string) error {
 }
 
 func (s *Server) destroyCellOn(ctx context.Context, cellID, workerID string) error {
+	start := time.Now()
+	err := s.destroyCellOnInner(ctx, cellID, workerID)
+	s.metrics.ObserveDestroy(time.Since(start), err)
+	return err
+}
+
+func (s *Server) destroyCellOnInner(ctx context.Context, cellID, workerID string) error {
 	w, ok := s.scheduler.Get(workerID)
 	if !ok {
 		return fmt.Errorf("worker %s not found for cell %s", workerID, cellID)
@@ -331,6 +431,13 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) execCell(ctx context.Context, id string, req cellapi.ExecRequest) (*cellapi.ExecResult, error) {
+	start := time.Now()
+	res, err := s.execCellInner(ctx, id, req)
+	s.metrics.ObserveExec(time.Since(start), err)
+	return res, err
+}
+
+func (s *Server) execCellInner(ctx context.Context, id string, req cellapi.ExecRequest) (*cellapi.ExecResult, error) {
 	rec, ok := s.meta.Get(id)
 	if !ok {
 		return nil, fmt.Errorf("cell %s not found", id)

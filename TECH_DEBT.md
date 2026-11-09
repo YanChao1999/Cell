@@ -45,7 +45,12 @@ Cell is an execution boundary for untrusted agent work. Security is not a later 
 ### Phase 5 (remaining)
 - Cross-platform mirror lock if Windows workers appear.
 - Compose CI job (optional; local `docker compose` + `scripts/cluster-smoke.sh` for now).
-- Stronger worker auth (mTLS / short-lived tokens) beyond shared Bearer `CELL_WORKER_TOKEN`.
+- mTLS between control and workers (beyond HMAC short-lived tokens).
+
+### P0 landed (auth / metrics / persist)
+- Short-lived HMAC worker tokens (`POST /v1/auth/token`) signed by `CELL_WORKER_TOKEN`; `CELL_WORKER_TOKEN_PREV` rotation grace; static secret still valid as bootstrap.
+- Prometheus text metrics at `GET /metrics` (create/exec/destroy totals + duration sums).
+- Durable control meta kept across `--mode=control` restarts; registry persisted to `state/workers.json`.
 
 ### Phase 5 landed (cluster compose + cache/auth)
 - `celld --mode=control|worker|all`, `--listen-http`, `--control-url`.

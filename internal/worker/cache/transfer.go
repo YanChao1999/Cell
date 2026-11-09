@@ -207,7 +207,7 @@ func (l *Layout) UnpackTarGzip(r io.Reader, hostKey string, opt TransferOptions)
 			if err := os.MkdirAll(target, 0o755); err != nil {
 				return err
 			}
-		case tar.TypeReg, tar.TypeRegA:
+		case tar.TypeReg:
 			files++
 			if files > opt.MaxFiles {
 				return fmt.Errorf("cache: transfer exceeds max files (%d)", opt.MaxFiles)
