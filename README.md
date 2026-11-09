@@ -168,4 +168,15 @@ Control listens on `localhost:18080`; workers register over HTTP and receive Cre
 
 `GET /metrics` exposes Prometheus counters for create/exec/destroy. Workers may mint short-lived tokens via `POST /v1/auth/token` (HMAC over `CELL_WORKER_TOKEN`; optional `CELL_WORKER_TOKEN_PREV` for rotation). Control `--mode=control` keeps meta + worker registry on disk across restarts.
 
+### Metrics UI (optional)
+
+There is no built-in chart UI — scrape `/metrics` with Prometheus and view in Grafana (dashboard included):
+
+```bash
+docker compose up --build -d
+docker compose -f docker-compose.yml -f docker-compose.obs.yml up -d
+# Grafana http://127.0.0.1:13000  (admin / cell, anonymous viewer on)
+# Prometheus http://127.0.0.1:19090
+```
+
 Open gaps — microVM and mTLS — are tracked in [TECH_DEBT.md](TECH_DEBT.md).

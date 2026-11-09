@@ -1,0 +1,135 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "title": "Create rate (ok / error)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": { "drawStyle": "line", "fillOpacity": 15, "spanNulls": true }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "rate(cell_create_total{result=\"ok\"}[1m])",
+          "legendFormat": "ok",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(cell_create_total{result=\"error\"}[1m])",
+          "legendFormat": "error",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "title": "Exec rate (ok / error)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": { "drawStyle": "line", "fillOpacity": 15, "spanNulls": true }
+        }
+      },
+      "targets": [
+        {
+          "expr": "rate(cell_exec_total{result=\"ok\"}[1m])",
+          "legendFormat": "ok",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(cell_exec_total{result=\"error\"}[1m])",
+          "legendFormat": "error",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "title": "Avg create latency",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "spanNulls": true }
+        }
+      },
+      "targets": [
+        {
+          "expr": "rate(cell_create_duration_seconds_sum[1m]) / clamp_min(rate(cell_create_duration_seconds_count[1m]), 1e-9)",
+          "legendFormat": "create pavg",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Avg exec latency",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "spanNulls": true }
+        }
+      },
+      "targets": [
+        {
+          "expr": "rate(cell_exec_duration_seconds_sum[1m]) / clamp_min(rate(cell_exec_duration_seconds_count[1m]), 1e-9)",
+          "legendFormat": "exec pavg",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Totals",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "targets": [
+        {
+          "expr": "cell_create_total{result=\"ok\"}",
+          "legendFormat": "creates ok",
+          "refId": "A"
+        },
+        {
+          "expr": "cell_create_total{result=\"error\"}",
+          "legendFormat": "creates err",
+          "refId": "B"
+        },
+        {
+          "expr": "cell_exec_total{result=\"ok\"}",
+          "legendFormat": "execs ok",
+          "refId": "C"
+        },
+        {
+          "expr": "cell_destroy_total{result=\"ok\"}",
+          "legendFormat": "destroys ok",
+          "refId": "D"
+        }
+      ]
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 39,
+  "tags": ["cell"],
+  "templating": { "list": [] },
+  "time": { "from": "now-15m", "to": "now" },
+  "timezone": "browser",
+  "title": "Cell control plane",
+  "uid": "cell-control",
+  "version": 1
+}
