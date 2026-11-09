@@ -15,18 +15,3 @@ type Backend interface {
 	Exec(ctx context.Context, opts runtime.ExecOpts) (*api.ExecResult, error)
 	Halt(ctx context.Context, cellID string) error
 }
-
-// nopBackend documents the contract; it is never used for successful boots.
-type nopBackend struct{}
-
-func (nopBackend) Name() string { return "none" }
-
-func (nopBackend) Boot(context.Context, string, runtime.CreateOpts, Config) error {
-	return errNoBackend
-}
-
-func (nopBackend) Exec(context.Context, runtime.ExecOpts) (*api.ExecResult, error) {
-	return nil, errNoBackend
-}
-
-func (nopBackend) Halt(context.Context, string) error { return errNoBackend }

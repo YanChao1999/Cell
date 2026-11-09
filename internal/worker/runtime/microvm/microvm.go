@@ -18,8 +18,6 @@ import (
 // ErrNoBackend means no VMM Backend is registered yet.
 var ErrNoBackend = errors.New("microvm: no VMM backend registered")
 
-var errNoBackend = ErrNoBackend
-
 // Runtime implements runtime.Runtime via an optional Backend.
 type Runtime struct {
 	cfg     Config
