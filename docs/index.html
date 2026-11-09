@@ -220,22 +220,27 @@
     </section>
 
     <section class="section">
-      <h2>What ships today</h2>
-      <p>Control plane + workers, Docker sandbox with allowlist egress, setup on create, multi-node compose with Bearer worker auth and cross-node cache pull.</p>
+      <h2>Why not a generic sandbox?</h2>
+      <p>Cloud VMs and hosted sandboxes solve “run untrusted code.” Cell is shaped for the agent loop: short-lived workspaces, warm caches, and a control plane you own.</p>
       <div class="grid">
         <article>
-          <h3>Disposable Cells</h3>
-          <p>Workspaces die with the Cell. Git mirrors and package caches stay warm for the next run.</p>
+          <h3>Workspace dies · cache lives</h3>
+          <p>Each Cell is disposable. Git mirrors and package caches stay on the worker so the next create is warm — without sharing mutable state between agents.</p>
         </article>
         <article>
-          <h3>Fail-closed isolation</h3>
-          <p>Unknown network modes and unfinished runtimes reject — they do not silently open the host.</p>
+          <h3>Fail closed by default</h3>
+          <p>Unknown network modes and unfinished runtimes reject. Allowlist egress is enforced in the runtime path, not bolted on later.</p>
         </article>
         <article>
-          <h3>Agent-shaped API</h3>
-          <p>HTTP + Python SDK: create, exec, run, destroy — sticky placement across a worker cluster.</p>
+          <h3>Self-hosted control plane</h3>
+          <p>Run on your machines, behind your proxy. Multi-worker place, Bearer worker auth, and cross-node cache pull — without sending agent traffic to a third-party sandbox SaaS.</p>
         </article>
       </div>
+    </section>
+
+    <section class="section">
+      <h2>What ships today</h2>
+      <p>Docker sandbox + allowlist egress, template setup on create, <code>celld</code> control/worker modes, Compose mini-cluster, Python SDK, and sticky exec across workers.</p>
     </section>
 
     <footer>
