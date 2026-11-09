@@ -15,19 +15,24 @@ import (
 
 // Server serves worker RPC routes.
 type Server struct {
-	worker *manager.LocalWorker
-	token  string
-	mux    *http.ServeMux
+	worker  *manager.LocalWorker
+	issuer  *auth.Issuer
+	mux     *http.ServeMux
 }
 
 // Options configure the worker HTTP server.
 type Options struct {
-	Token string // shared Bearer token; empty disables auth
+	Token  string       // long-lived HMAC/bootstrap secret; empty disables auth
+	Issuer *auth.Issuer // optional pre-built issuer (overrides Token)
 }
 
 // New wraps a LocalWorker.
 func New(w *manager.LocalWorker, opts Options) *Server {
-	s := &Server{worker: w, token: opts.Token, mux: http.NewServeMux()}
+	iss := opts.Issuer
+	if iss == nil {
+		iss = auth.NewIssuer(opts.Token, "")
+	}
+	s := &Server{worker: w, issuer: iss, mux: http.NewServeMux()}
 	s.routes()
 	return s
 }
@@ -43,7 +48,7 @@ func (s *Server) routes() {
 
 // Handler returns the HTTP handler (with optional Bearer auth).
 func (s *Server) Handler() http.Handler {
-	return auth.Middleware(s.token)(s.mux)
+	return auth.Middleware(s.issuer, auth.ScopeWorker)(s.mux)
 }
 
 // ListenAndServe serves on TCP addr (e.g. ":8080").

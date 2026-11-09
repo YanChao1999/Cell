@@ -59,6 +59,13 @@ func (w *Worker) ID() string { return w.id }
 // Endpoint returns the base HTTP URL.
 func (w *Worker) Endpoint() string { return w.endpoint }
 
+// SetToken updates the Bearer credential used for worker RPC.
+func (w *Worker) SetToken(token string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.token = strings.TrimSpace(token)
+}
+
 // UpdateCapacity refreshes placement stats from registry heartbeats.
 func (w *Worker) UpdateCapacity(max, used int, cacheKeys []string) {
 	w.mu.Lock()

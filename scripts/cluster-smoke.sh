@@ -53,6 +53,15 @@ TOKEN="${CELL_WORKER_TOKEN:-cell-dev-token}"
 curl -sf -H "Authorization: Bearer $TOKEN" http://127.0.0.1:18081/worker/v1/health | grep -q ok
 echo "OK worker RPC auth"
 
+# Short-lived token mint + metrics endpoint
+ST=$(curl -sf -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"scope":"worker","ttl":"5m"}' "$CTRL/v1/auth/token")
+SHORT=$(printf '%s' "$ST" | python3 -c 'import sys,json; print(json.load(sys.stdin)["token"])')
+curl -sf -H "Authorization: Bearer $SHORT" http://127.0.0.1:18081/worker/v1/health | grep -q ok
+echo "OK short-lived token"
+curl -sf "$CTRL/metrics" | grep -q cell_create_total
+echo "OK metrics"
+
 create_one() {
   curl -sf "$CTRL/v1/cells" -H 'Content-Type: application/json' -d '{
     "environment":"go-1.23",

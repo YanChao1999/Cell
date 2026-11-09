@@ -13,8 +13,9 @@ import (
 
 func TestEndpointForCache(t *testing.T) {
 	mux := http.NewServeMux()
+	iss := auth.NewIssuer("tok", "")
 	mux.HandleFunc("GET /v1/workers", func(w http.ResponseWriter, r *http.Request) {
-		if !auth.Authorize(r, "tok") {
+		if !auth.Authorize(r, iss, auth.ScopeWorker) {
 			http.Error(w, "no", http.StatusUnauthorized)
 			return
 		}

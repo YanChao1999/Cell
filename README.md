@@ -166,4 +166,6 @@ docker compose down -v
 
 Control listens on `localhost:18080`; workers register over HTTP and receive Create/Exec via worker RPC (`CELL_RUNTIME=host` in compose). Set `CELL_WORKER_TOKEN` (compose uses `cell-dev-token`) so register/heartbeat and `/worker/v1/*` require Bearer auth. Cold cache keys are pulled from warm peers on create (`GET /worker/v1/caches/{key}`).
 
-Open gaps — microVM and stronger auth — are tracked in [TECH_DEBT.md](TECH_DEBT.md).
+`GET /metrics` exposes Prometheus counters for create/exec/destroy. Workers may mint short-lived tokens via `POST /v1/auth/token` (HMAC over `CELL_WORKER_TOKEN`; optional `CELL_WORKER_TOKEN_PREV` for rotation). Control `--mode=control` keeps meta + worker registry on disk across restarts.
+
+Open gaps — microVM and mTLS — are tracked in [TECH_DEBT.md](TECH_DEBT.md).

@@ -36,7 +36,8 @@ jobs:
           go test ./internal/worker/cache/ ./internal/worker/auth/ ./internal/worker/envtemplate/ \
             ./internal/worker/egress/ ./internal/worker/manager/ ./internal/worker/httpserver/ \
             ./internal/worker/source/git/ ./internal/worker/runtime/docker/ \
-            ./internal/worker/remote/ ./internal/worker/peers/ ./internal/control/registry/
+            ./internal/worker/remote/ ./internal/worker/peers/ \
+            ./internal/control/registry/ ./internal/control/metrics/
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v7
