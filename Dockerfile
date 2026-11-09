@@ -1,7 +1,7 @@
 # Cell daemon image for local cluster smoke (compose).
 # Prefer ECR mirror of Docker Hub library images when Hub IPv6 hangs.
 # Digest-pinned (Dependabot can refresh). Tag 1.26-bookworm @ 2026-11-09.
-FROM public.ecr.aws/docker/library/golang:1.26-bookworm@sha256:5de7c99eb78ca5e515a4c340235d0955ec5964a5071c492c15503d7c267da473 AS build
+FROM public.ecr.aws/docker/library/golang:1.27-bookworm@sha256:dc0963f32053e4bc451d24d87e3892d42d01021b61f093e98eb95c0352bb84b0 AS build
 WORKDIR /src
 COPY go.mod ./
 COPY . .
@@ -12,7 +12,7 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/celld ./cmd/celld 
 
 # Reuse the golang image as runtime so we do not need a second registry pull
 # (debian:bookworm-slim often fails behind flaky Docker Hub / IPv6).
-FROM public.ecr.aws/docker/library/golang:1.26-bookworm@sha256:5de7c99eb78ca5e515a4c340235d0955ec5964a5071c492c15503d7c267da473
+FROM public.ecr.aws/docker/library/golang:1.27-bookworm@sha256:dc0963f32053e4bc451d24d87e3892d42d01021b61f093e98eb95c0352bb84b0
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
  && rm -rf /var/lib/apt/lists/*
 COPY --from=build /out/celld /out/cell /out/cell-egress /usr/local/bin/
