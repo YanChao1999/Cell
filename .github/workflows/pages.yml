@@ -1,3 +1,5 @@
+# Optional Actions-based deploy. Prefer Settings → Pages →
+# "Deploy from a branch" → main → /docs (more reliable for first setup).
 name: GitHub Pages
 
 on:
