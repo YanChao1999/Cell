@@ -181,4 +181,12 @@ docker compose -f docker-compose.yml -f docker-compose.obs.yml up -d
 # Prometheus http://127.0.0.1:19090
 ```
 
-Open gaps — microVM and mTLS — are tracked in [TECH_DEBT.md](TECH_DEBT.md).
+### Ops & security (P1)
+
+- Support matrix: [docs/ops/SUPPORT.md](docs/ops/SUPPORT.md)
+- Restart / rolling: [docs/ops/PLAYBOOK.md](docs/ops/PLAYBOOK.md)
+- Upgrades: [docs/ops/UPGRADE.md](docs/ops/UPGRADE.md)
+- Threat model: [docs/security/THREAT_MODEL.md](docs/security/THREAT_MODEL.md)
+- Docker escape checklist: [docs/security/ESCAPE_CHECKLIST.md](docs/security/ESCAPE_CHECKLIST.md)
+
+`CELL_RUNTIME=microvm` selects the fail-closed microVM mainline (M0); real VMM Backend is tracked in [TECH_DEBT.md](TECH_DEBT.md) and `internal/worker/runtime/microvm/DESIGN.md`. Remaining gaps (mTLS, Firecracker M1+) are in [TECH_DEBT.md](TECH_DEBT.md).
