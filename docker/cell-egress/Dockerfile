@@ -6,7 +6,7 @@
 # Or one-shot (needs Docker buildkit + network for go modules):
 #   docker build -f docker/cell-egress/Dockerfile --target runtime -t cell-egress:local .
 
-FROM golang:1.23-bookworm AS build
+FROM public.ecr.aws/docker/library/golang:1.26-bookworm AS build
 WORKDIR /src
 COPY go.mod ./
 COPY . .

@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"time"
+
+	"github.com/YanChao1999/Cell/internal/version"
 )
 
 func main() {
@@ -34,7 +36,7 @@ func main() {
 			err = doDestroy(os.Args[2])
 		}
 	case "version", "-version", "--version":
-		fmt.Println("cell 0.3.0")
+		fmt.Println(version.String("cell"))
 	case "help", "-h", "--help":
 		usage()
 	default:

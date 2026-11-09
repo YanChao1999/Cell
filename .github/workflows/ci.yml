@@ -35,15 +35,19 @@ jobs:
         run: |
           go test ./internal/worker/cache/ ./internal/worker/auth/ ./internal/worker/envtemplate/ \
             ./internal/worker/egress/ ./internal/worker/manager/ ./internal/worker/httpserver/ \
-            ./internal/worker/source/git/ ./internal/worker/runtime/docker/ \
+            ./internal/worker/source/git/ ./internal/worker/runtime/ ./internal/worker/runtime/docker/ \
+            ./internal/worker/runtime/microvm/ \
             ./internal/worker/remote/ ./internal/worker/peers/ \
-            ./internal/control/registry/ ./internal/control/metrics/
+            ./internal/control/registry/ ./internal/control/metrics/ ./internal/version/
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v7
         with:
           version: v2.1.6
           args: --timeout=5m
+
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
   smoke:
     name: API smoke
@@ -63,6 +67,31 @@ jobs:
         run: |
           chmod +x scripts/smoke.sh
           ./scripts/smoke.sh
+
+  cluster:
+    name: Compose cluster smoke
+    runs-on: ubuntu-latest
+    needs: go
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and start compose cluster
+        run: docker compose up --build -d
+
+      - name: Cluster smoke
+        env:
+          CELL_WORKER_TOKEN: cell-dev-token
+        run: |
+          chmod +x scripts/cluster-smoke.sh
+          ./scripts/cluster-smoke.sh
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose logs --no-color || true
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
 
   python:
     name: Python SDK syntax

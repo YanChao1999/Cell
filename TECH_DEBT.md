@@ -34,8 +34,18 @@ Cell is an execution boundary for untrusted agent work. Security is not a later 
 
 ## Still open
 
+### P1 — internal production (in progress)
+Track: ops / security ops / isolation / product. Docs under `docs/ops/`, `docs/security/`.
+
+| Track | Done in tree | Still open |
+|-------|--------------|------------|
+| Ops | `docs/ops/PLAYBOOK.md`, `UPGRADE.md`; compose cluster CI job; single `internal/version` | Tagged releases + image promotion script |
+| Security ops | `docs/security/THREAT_MODEL.md`, `ESCAPE_CHECKLIST.md`; `govulncheck` in CI | Dependabot/renovate; digest-pinned base images |
+| Isolation | MicroVM M0: `Backend`/`Config`/`CELL_RUNTIME=microvm` fail-closed wiring | M1+ Firecracker Backend; further Docker harden |
+| Product | `docs/ops/SUPPORT.md` (supported / not supported, no SLA) | Expand runbooks from incidents |
+
 ### MicroVM backend (real VMM)
-- Firecracker / Cloud Hypervisor / QEMU behind `Runtime`. See `microvm/DESIGN.md`.
+- M0 landed (fail-closed). M1+: Firecracker / Cloud Hypervisor / QEMU `Backend`. See `internal/worker/runtime/microvm/DESIGN.md`.
 
 ### Hardening polish
 - Seed size/latency tuning; optional content hashing of seeded files.
@@ -44,7 +54,6 @@ Cell is an execution boundary for untrusted agent work. Security is not a later 
 
 ### Phase 5 (remaining)
 - Cross-platform mirror lock if Windows workers appear.
-- Compose CI job (optional; local `docker compose` + `scripts/cluster-smoke.sh` for now).
 - mTLS between control and workers (beyond HMAC short-lived tokens).
 
 ### P0 landed (auth / metrics / persist)
@@ -55,6 +64,6 @@ Cell is an execution boundary for untrusted agent work. Security is not a later 
 ### Phase 5 landed (cluster compose + cache/auth)
 - `celld --mode=control|worker|all`, `--listen-http`, `--control-url`.
 - Worker HTTP RPC (`/worker/v1/...`) + remote client; registry sync into scheduler.
-- `docker-compose.yml` (control + worker-a + worker-b) and `scripts/cluster-smoke.sh`.
+- `docker-compose.yml` (control + worker-a + worker-b) and `scripts/cluster-smoke.sh` (+ CI compose job).
 - Shared Bearer auth: `CELL_WORKER_TOKEN` / `--worker-token` on worker RPC + register/heartbeat.
 - Cross-node cache pull: `GET /worker/v1/caches/{key}` + create-time pull of cold keys from warm peers.

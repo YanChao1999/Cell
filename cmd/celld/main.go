@@ -22,13 +22,16 @@ import (
 	"github.com/YanChao1999/Cell/internal/control/reaper"
 	"github.com/YanChao1999/Cell/internal/control/registry"
 	"github.com/YanChao1999/Cell/internal/control/scheduler"
+	"github.com/YanChao1999/Cell/internal/version"
 	"github.com/YanChao1999/Cell/internal/worker/auth"
 	"github.com/YanChao1999/Cell/internal/worker/cache"
 	"github.com/YanChao1999/Cell/internal/worker/envtemplate"
 	"github.com/YanChao1999/Cell/internal/worker/httpserver"
 	"github.com/YanChao1999/Cell/internal/worker/manager"
 	"github.com/YanChao1999/Cell/internal/worker/peers"
+	"github.com/YanChao1999/Cell/internal/worker/runtime"
 	"github.com/YanChao1999/Cell/internal/worker/runtime/docker"
+	"github.com/YanChao1999/Cell/internal/worker/runtime/microvm"
 	"github.com/YanChao1999/Cell/internal/worker/source/git"
 	"github.com/YanChao1999/Cell/internal/workerapi"
 )
@@ -44,7 +47,7 @@ func main() {
 			log.Fatal(err)
 		}
 	case "version", "-version", "--version":
-		fmt.Println("celld 0.6.0-p0")
+		fmt.Println(version.String("celld"))
 	case "help", "-h", "--help":
 		usage()
 	default:
@@ -312,6 +315,10 @@ func newLocalWorker(id, workspaces, repos, cacheDir, environments, controlURL, t
 		return nil, fmt.Errorf("cache: %w", err)
 	}
 	log.Printf("celld: environments=%s repos=%s cache=%s", envAbs, repos, cacheDir)
+	rt, err := pickRuntime()
+	if err != nil {
+		return nil, err
+	}
 	var peerFinder manager.PeerFinder
 	if strings.TrimSpace(controlURL) != "" {
 		peerFinder = &peers.Finder{ControlURL: controlURL, Token: token}
@@ -322,12 +329,28 @@ func newLocalWorker(id, workspaces, repos, cacheDir, environments, controlURL, t
 		ReposRoot:      repos,
 		CacheDir:       cacheDir,
 		CacheLayout:    cacheLayout,
-		Runtime:        docker.New(),
+		Runtime:        rt,
 		Source:         src,
 		EnvLoader:      envtemplate.New(envAbs),
 		Peers:          peerFinder,
 		WorkerToken:    token,
 	})
+}
+
+// pickRuntime selects Docker/host (via docker package) or fail-closed microVM.
+func pickRuntime() (runtime.Runtime, error) {
+	name, err := runtime.FromEnv()
+	if err != nil {
+		return nil, err
+	}
+	switch name {
+	case runtime.NameMicroVM:
+		log.Println("runtime: CELL_RUNTIME=microvm (fail-closed until VMM Backend ships)")
+		return microvm.New(), nil
+	default:
+		// NameDocker / NameHost: docker.New honors CELL_RUNTIME=host.
+		return docker.New(), nil
+	}
 }
 
 func waitServe(ctx context.Context, errCh <-chan error, socket string) error {
