@@ -74,6 +74,7 @@ func (s *Server) Registry() *registry.Registry { return s.registry }
 func (s *Server) routes() {
 	s.mux.HandleFunc("GET /health", s.handleHealth)
 	s.mux.Handle("GET /metrics", s.metrics.Handler())
+	s.mux.Handle("GET /metrics/ui", metrics.UIHandler())
 	s.mux.HandleFunc("POST /v1/auth/token", s.handleIssueToken)
 	s.mux.HandleFunc("POST /v1/cells", s.handleCreate)
 	s.mux.HandleFunc("GET /v1/cells", s.handleList)
