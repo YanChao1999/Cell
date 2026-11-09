@@ -268,7 +268,7 @@ func (c *fcCell) putJSON(ctx context.Context, method, url string, body any) erro
 	if err != nil {
 		return err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode >= 300 {
 		msg, _ := io.ReadAll(io.LimitReader(res.Body, 4096))
 		return fmt.Errorf("firecracker %s %s: %s (%s)", method, url, res.Status, bytes.TrimSpace(msg))
@@ -327,7 +327,7 @@ func (c *fcCell) roundTrip(ctx context.Context, req guestproto.Request, timeout 
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	_ = conn.SetDeadline(time.Now().Add(timeout))
 	if err := writeFrame(conn, req); err != nil {
 		return nil, err

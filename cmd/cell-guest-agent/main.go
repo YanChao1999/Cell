@@ -43,7 +43,7 @@ func main() {
 }
 
 func serve(ln net.Listener) {
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
@@ -55,7 +55,7 @@ func serve(ln net.Listener) {
 }
 
 func handle(conn net.Conn) {
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	_ = conn.SetDeadline(time.Now().Add(5 * time.Minute))
 	var req guestproto.Request
 	if err := readFrame(conn, &req); err != nil {
@@ -105,7 +105,7 @@ func syncWorkspace(tarB64 string) error {
 	if err != nil {
 		return err
 	}
-	defer gr.Close()
+	defer func() { _ = gr.Close() }()
 	tr := tar.NewReader(gr)
 	for {
 		hdr, err := tr.Next()
@@ -133,10 +133,12 @@ func syncWorkspace(tarB64 string) error {
 				return err
 			}
 			if _, err := io.Copy(f, tr); err != nil {
-				f.Close()
+				_ = f.Close()
 				return err
 			}
-			f.Close()
+			if err := f.Close(); err != nil {
+				return err
+			}
 		}
 	}
 }
