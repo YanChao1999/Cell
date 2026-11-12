@@ -2,9 +2,13 @@
 
 All notable changes to Cell are documented here. Versioning follows semver-ish `0.y.z` while the project is pre-1.0.
 
-## [0.7.0] — pending tag
+## [Unreleased]
 
-Internal-production (P1) cut. Binaries report `0.7.0` once tagged (tree may still show `0.7.0-dev` on main between tags).
+_Nothing yet._
+
+## [0.7.0] — 2026-11-12
+
+Internal-production (P1) cut.
 
 ### Added
 - Ops docs: support matrix, upgrade notes, restart/rolling playbook (`docs/ops/`)
@@ -14,6 +18,10 @@ Internal-production (P1) cut. Binaries report `0.7.0` once tagged (tree may stil
 - MicroVM M1: Firecracker Backend, `cell-guest-agent` (vsock), `scripts/fetch-microvm-artifacts.sh`
 - Docker `--pids-limit` (default 256, override `CELL_DOCKER_PIDS_LIMIT`)
 - Unified `internal/version`; GitHub Pages isolation animation
+- Local host-runtime cluster smoke script (`scripts/cluster-local-smoke.sh`)
+
+### Fixed
+- Bump Go toolchain to `go1.26.11` (govulncheck GO-2026-6859 / net/http MaxBytesReader)
 
 ### From 0.6 / P0 (already on main before this cut)
 - Short-lived HMAC worker tokens + rotation grace
@@ -25,7 +33,3 @@ Internal-production (P1) cut. Binaries report `0.7.0` once tagged (tree may stil
 - MicroVM M2 (egress/jailer) / M3 (rootfs CI)
 - mTLS control↔worker
 - Formal SLA
-
-## [Unreleased]
-
-- Bump Go toolchain to `go1.26.11` (govulncheck GO-2026-6859 / net/http MaxBytesReader)
