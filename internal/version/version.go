@@ -3,7 +3,7 @@ package version
 
 // Version is the release identifier reported by `celld version` / `cell version`.
 // Bump on each tagged release; keep the -dev suffix on main between tags.
-const Version = "0.7.0-dev"
+const Version = "0.7.0"
 
 // String returns a human-readable version line for a binary name.
 func String(bin string) string {
