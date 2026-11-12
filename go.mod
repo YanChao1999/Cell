@@ -2,7 +2,7 @@ module github.com/YanChao1999/Cell
 
 go 1.26.0
 
-toolchain go1.26.10
+toolchain go1.26.11
 
 require github.com/mdlayher/vsock v1.4.0
 

@@ -20,7 +20,7 @@ if ! command -v go >/dev/null 2>&1; then
   exit 127
 fi
 
-GOTOOLCHAIN="${GOTOOLCHAIN:-go1.26.10}"
+GOTOOLCHAIN="${GOTOOLCHAIN:-go1.26.11}"
 go build -o bin/celld ./cmd/celld
 
 CLUSTER_HOME="$(mktemp -d /tmp/cell-cluster.XXXXXX)"

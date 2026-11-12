@@ -28,4 +28,4 @@ Internal-production (P1) cut. Binaries report `0.7.0` once tagged (tree may stil
 
 ## [Unreleased]
 
-_Nothing yet — next work lands here after `v0.7.0`._
+- Bump Go toolchain to `go1.26.11` (govulncheck GO-2026-6859 / net/http MaxBytesReader)
