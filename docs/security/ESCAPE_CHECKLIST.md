@@ -40,7 +40,9 @@ Run before promoting a worker host to internal production. Still **container** i
 ## Runtime mode
 
 - [ ] Production workers do **not** set `CELL_RUNTIME=host`
-- [ ] `CELL_RUNTIME=microvm` only after a real VMM backend ships (today: fail-closed)
+- [ ] `CELL_RUNTIME=microvm` only with jailer on PATH (or documented `CELL_MICROVM_ALLOW_UNJAILED=1` for non-prod)
+- [ ] MicroVM templates use `network: none` or `allowlist` (not `default`/`open`)
+- [ ] Allowlist microVM workers have `CAP_NET_ADMIN` for TAP + host `cell-egress`
 
 ## Residual
 

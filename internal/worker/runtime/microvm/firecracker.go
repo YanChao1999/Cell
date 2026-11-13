@@ -27,14 +27,19 @@ type Firecracker struct {
 }
 
 type fcCell struct {
-	cfg      Config
-	opts     runtime.CreateOpts
-	cmd      *exec.Cmd
-	apiSock  string
-	vsockUDS string
-	workDir  string
-	cid      uint32
-	client   *http.Client
+	cfg        Config
+	opts       runtime.CreateOpts
+	cmd        *exec.Cmd
+	apiSock    string
+	vsockUDS   string
+	workDir    string
+	cid        uint32
+	client     *http.Client
+	kernelAPI  string
+	rootfsAPI  string
+	netMode    string
+	allowlist  *allowlistNet
+	jailRoot   string
 }
 
 // NewFirecracker returns a Firecracker Backend.
@@ -49,6 +54,11 @@ func (f *Firecracker) Boot(ctx context.Context, cellID string, opts runtime.Crea
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
+	netMode, err := validateNetworkOpts(opts)
+	if err != nil {
+		return err
+	}
+
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if _, ok := f.cells[cellID]; ok {
@@ -62,24 +72,34 @@ func (f *Firecracker) Boot(ctx context.Context, cellID string, opts runtime.Crea
 			return err
 		}
 	}
-	apiSock := filepath.Join(workDir, "firecracker.sock")
 	vsockUDS := filepath.Join(workDir, "vsock.sock")
-	_ = os.Remove(apiSock)
 	_ = os.Remove(vsockUDS)
 
-	vmmPath, err := lookPath(cfg.VMM)
+	var allow *allowlistNet
+	if netMode == networkAllowlist {
+		allow, err = setupAllowlist(ctx, opts)
+		if err != nil {
+			_ = os.RemoveAll(workDir)
+			return err
+		}
+	}
+
+	launch, err := prepareVMM(cfg, cellID, workDir, vsockUDS)
 	if err != nil {
+		_ = allow.cleanup(context.Background())
 		_ = os.RemoveAll(workDir)
 		return err
 	}
-	cmd := exec.CommandContext(ctx, vmmPath, "--api-sock", apiSock)
+	cmd := launch.Cmd
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
+		_ = allow.cleanup(context.Background())
 		_ = os.RemoveAll(workDir)
 		return fmt.Errorf("microvm: start firecracker: %w", err)
 	}
 
+	apiSock := launch.APISock
 	client := &http.Client{
 		Transport: &http.Transport{
 			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
@@ -93,39 +113,36 @@ func (f *Firecracker) Boot(ctx context.Context, cellID string, opts runtime.Crea
 	cell := &fcCell{
 		cfg: cfg, opts: opts, cmd: cmd, apiSock: apiSock, vsockUDS: vsockUDS,
 		workDir: workDir, cid: 3, client: client,
+		kernelAPI: launch.KernelAPI, rootfsAPI: launch.RootfsAPI,
+		netMode: netMode, allowlist: allow, jailRoot: launch.JailRoot,
+	}
+	fail := func(err error) error {
+		_ = cmd.Process.Kill()
+		_, _ = cmd.Process.Wait()
+		_ = allow.cleanup(context.Background())
+		_ = os.RemoveAll(workDir)
+		if launch.JailRoot != "" {
+			_ = os.RemoveAll(launch.JailRoot)
+		}
+		return err
 	}
 	if err := cell.waitAPISock(ctx); err != nil {
-		_ = cmd.Process.Kill()
-		_, _ = cmd.Process.Wait()
-		_ = os.RemoveAll(workDir)
-		return err
+		return fail(err)
 	}
 	if err := cell.configure(ctx); err != nil {
-		_ = cmd.Process.Kill()
-		_, _ = cmd.Process.Wait()
-		_ = os.RemoveAll(workDir)
-		return err
+		return fail(err)
 	}
 	if err := cell.putJSON(ctx, http.MethodPut, "http://localhost/actions", map[string]string{
 		"action_type": "InstanceStart",
 	}); err != nil {
-		_ = cmd.Process.Kill()
-		_, _ = cmd.Process.Wait()
-		_ = os.RemoveAll(workDir)
-		return fmt.Errorf("microvm: InstanceStart: %w", err)
+		return fail(fmt.Errorf("microvm: InstanceStart: %w", err))
 	}
 	if err := cell.waitAgent(ctx); err != nil {
-		_ = cmd.Process.Kill()
-		_, _ = cmd.Process.Wait()
-		_ = os.RemoveAll(workDir)
-		return err
+		return fail(err)
 	}
 	if opts.Workspace != "" {
 		if err := cell.syncWorkspace(ctx, opts.Workspace); err != nil {
-			_ = cmd.Process.Kill()
-			_, _ = cmd.Process.Wait()
-			_ = os.RemoveAll(workDir)
-			return err
+			return fail(err)
 		}
 	}
 	f.cells[cellID] = cell
@@ -143,11 +160,20 @@ func (f *Firecracker) Exec(ctx context.Context, opts runtime.ExecOpts) (*api.Exe
 	if timeout <= 0 {
 		timeout = int(guestproto.DefaultExecTimeout / time.Second)
 	}
+	env := map[string]string{}
+	if cell.allowlist != nil {
+		for k, v := range cell.allowlist.proxyEnv {
+			env[k] = v
+		}
+	}
+	for k, v := range opts.Env {
+		env[k] = v
+	}
 	req := guestproto.Request{
 		Op:      guestproto.OpExec,
 		Command: opts.Command,
 		Timeout: timeout,
-		Env:     opts.Env,
+		Env:     env,
 		Cwd:     "/workspace",
 	}
 	resp, err := cell.roundTrip(ctx, req, time.Duration(timeout)*time.Second+10*time.Second)
@@ -188,7 +214,11 @@ func (f *Firecracker) Halt(ctx context.Context, cellID string) error {
 		_ = cell.cmd.Process.Kill()
 		<-done
 	}
+	_ = cell.allowlist.cleanup(ctx)
 	_ = os.RemoveAll(cell.workDir)
+	if cell.jailRoot != "" {
+		_ = os.RemoveAll(cell.jailRoot)
+	}
 	return nil
 }
 
@@ -227,19 +257,41 @@ func (c *fcCell) configure(ctx context.Context) error {
 	if bootArgs == "" {
 		bootArgs = "console=ttyS0 reboot=k panic=1 pci=off init=/usr/local/bin/cell-guest-agent"
 	}
+	if c.allowlist != nil {
+		if ip := c.allowlist.bootIPArg(); ip != "" {
+			bootArgs = bootArgs + " " + ip
+		}
+	}
+	kernel := c.kernelAPI
+	if kernel == "" {
+		kernel = c.cfg.Kernel
+	}
+	rootfs := c.rootfsAPI
+	if rootfs == "" {
+		rootfs = c.cfg.Rootfs
+	}
 	if err := c.putJSON(ctx, http.MethodPut, "http://localhost/boot-source", map[string]any{
-		"kernel_image_path": c.cfg.Kernel,
+		"kernel_image_path": kernel,
 		"boot_args":         bootArgs,
 	}); err != nil {
 		return fmt.Errorf("boot-source: %w", err)
 	}
 	if err := c.putJSON(ctx, http.MethodPut, "http://localhost/drives/rootfs", map[string]any{
 		"drive_id":       "rootfs",
-		"path_on_host":   c.cfg.Rootfs,
+		"path_on_host":   rootfs,
 		"is_root_device": true,
 		"is_read_only":   false,
 	}); err != nil {
 		return fmt.Errorf("drives/rootfs: %w", err)
+	}
+	if c.allowlist != nil {
+		if err := c.putJSON(ctx, http.MethodPut, "http://localhost/network-interfaces/eth0", map[string]any{
+			"iface_id":      "eth0",
+			"guest_mac":     c.allowlist.guestMAC,
+			"host_dev_name": c.allowlist.tapName,
+		}); err != nil {
+			return fmt.Errorf("network-interfaces/eth0: %w", err)
+		}
 	}
 	if err := c.putJSON(ctx, http.MethodPut, "http://localhost/vsock", map[string]any{
 		"guest_cid": c.cid,

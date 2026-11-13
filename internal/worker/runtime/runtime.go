@@ -21,12 +21,12 @@ type CreateOpts struct {
 	Limits      api.Limits
 	Env         map[string]string
 	// Network is the egress policy from the environment template:
-	//   "" / "default" / "open" — normal Docker egress
-	//   "none" — no network (--network none)
-	//   "allowlist" — reserved for proxy allowlisting (rejected until implemented)
+	//   "" / "default" / "open" — normal Docker egress (rejected on microVM)
+	//   "none" — no network (Docker --network none; microVM: no NIC)
+	//   "allowlist" — proxy allowlisting (Docker sidecar; microVM TAP + host cell-egress)
 	// Host fallback rejects any mode other than default/open.
 	Network string
-	// EgressAllow is the future hostname allowlist when Network is allowlist.
+	// EgressAllow is the hostname allowlist when Network is allowlist.
 	EgressAllow []string
 	// CacheMounts are durable host dirs bind-mounted into the container
 	// (Docker). In host-fallback mode they drive cache-related env vars.

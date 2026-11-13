@@ -21,8 +21,12 @@ BASE="https://github.com/firecracker-microvm/firecracker/releases/download/${FC_
 curl -fsSL "${BASE}/firecracker-${FC_VERSION}-${ARCH}.tgz" -o "$TMP/fc.tgz"
 tar -xzf "$TMP/fc.tgz" -C "$TMP"
 # Release layout: release-${VERSION}-${ARCH}/firecracker-${VERSION}-${ARCH}
-FC_BIN="$(find "$TMP" -type f -name 'firecracker-*' ! -name '*.tgz' | head -n1)"
+FC_BIN="$(find "$TMP" -type f -name 'firecracker-*' ! -name '*.tgz' ! -name '*jailer*' | head -n1)"
 install -m 0755 "$FC_BIN" "$DIR/firecracker"
+JAILER_BIN="$(find "$TMP" -type f -name 'jailer-*' ! -name '*.tgz' | head -n1 || true)"
+if [[ -n "${JAILER_BIN}" ]]; then
+  install -m 0755 "$JAILER_BIN" "$DIR/jailer"
+fi
 
 # Official CI kernels are published alongside firecracker releases as vmlinux.
 # Prefer an operator-provided kernel; otherwise try the release asset name used by FC docs.
@@ -37,6 +41,7 @@ fi
 cat <<EOF
 Artifacts dir: $DIR
   firecracker → $DIR/firecracker
+  jailer      → $DIR/jailer     (required in prod; or CELL_MICROVM_ALLOW_UNJAILED=1)
   kernel      → $DIR/vmlinux   (required)
   rootfs      → $DIR/rootfs.ext4 (required; must include /usr/local/bin/cell-guest-agent as init)
 
@@ -48,4 +53,5 @@ Env:
   export PATH=\"$DIR:\$PATH\"
   export CELL_RUNTIME=microvm
   export CELL_MICROVM_DIR=$DIR
+  export CELL_MICROVM_JAILER=$DIR/jailer
 EOF
