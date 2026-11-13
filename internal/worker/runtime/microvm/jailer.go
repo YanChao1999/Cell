@@ -12,12 +12,12 @@ import (
 
 // vmmLaunch describes how to start Firecracker (bare or jailed).
 type vmmLaunch struct {
-	Cmd        *exec.Cmd
-	APISock    string // host-visible API UNIX socket
-	KernelAPI  string // path passed to Firecracker boot-source API
-	RootfsAPI  string // path passed to Firecracker drives API
-	JailRoot   string // non-empty when jailed (chroot dir on host)
-	VsockHost  string // host UDS for vsock
+	Cmd       *exec.Cmd
+	APISock   string // host-visible API UNIX socket
+	KernelAPI string // path passed to Firecracker boot-source API
+	RootfsAPI string // path passed to Firecracker drives API
+	JailRoot  string // non-empty when jailed (chroot dir on host)
+	VsockHost string // host UDS for vsock
 }
 
 // allowUnjailed reports whether bare firecracker (no jailer) is permitted.

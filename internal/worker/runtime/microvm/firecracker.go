@@ -27,19 +27,19 @@ type Firecracker struct {
 }
 
 type fcCell struct {
-	cfg        Config
-	opts       runtime.CreateOpts
-	cmd        *exec.Cmd
-	apiSock    string
-	vsockUDS   string
-	workDir    string
-	cid        uint32
-	client     *http.Client
-	kernelAPI  string
-	rootfsAPI  string
-	netMode    string
-	allowlist  *allowlistNet
-	jailRoot   string
+	cfg       Config
+	opts      runtime.CreateOpts
+	cmd       *exec.Cmd
+	apiSock   string
+	vsockUDS  string
+	workDir   string
+	cid       uint32
+	client    *http.Client
+	kernelAPI string
+	rootfsAPI string
+	netMode   string
+	allowlist *allowlistNet
+	jailRoot  string
 }
 
 // NewFirecracker returns a Firecracker Backend.
