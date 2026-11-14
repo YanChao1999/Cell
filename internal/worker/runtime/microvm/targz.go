@@ -80,3 +80,53 @@ func tarGzDir(dir string, w io.Writer) (err error) {
 	}
 	return nil
 }
+
+// untarGzDir extracts a gzip tar into dest (creates dest if needed).
+func untarGzDir(r io.Reader, dest string) error {
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		return err
+	}
+	gr, err := gzip.NewReader(r)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = gr.Close() }()
+	tr := tar.NewReader(gr)
+	root := filepath.Clean(dest)
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		name := filepath.Clean(hdr.Name)
+		if name == "." || strings.HasPrefix(name, "..") {
+			continue
+		}
+		target := filepath.Join(root, name)
+		if !strings.HasPrefix(target, root+string(os.PathSeparator)) && target != root {
+			return fmt.Errorf("microvm: path escapes dest: %s", hdr.Name)
+		}
+		switch hdr.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(target, 0o755); err != nil {
+				return err
+			}
+		case tar.TypeReg:
+			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+				return err
+			}
+			f, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(hdr.Mode))
+			if err != nil {
+				return err
+			}
+			_, copyErr := io.Copy(f, tr)
+			_ = f.Close()
+			if copyErr != nil {
+				return copyErr
+			}
+		}
+	}
+}

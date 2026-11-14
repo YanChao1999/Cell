@@ -6,7 +6,10 @@ import "time"
 const (
 	// DefaultPort is the vsock port the guest agent listens on.
 	DefaultPort = 5032
-	// MaxFrameBytes caps a single request/response frame (workspace sync chunks inclusive).
+	// MaxFrameBytes caps a single request/response frame (workspace sync/export
+	// inclusive). MicroVM snapshot capture/restore of workspaces that exceed this
+	// after JSON+base64 encoding will fail closed; Docker/host pack paths stream
+	// and are not bound by this limit. Chunked export is future work.
 	MaxFrameBytes = 64 << 20
 )
 
@@ -14,6 +17,7 @@ const (
 const (
 	OpPing     = "ping"
 	OpSync     = "sync_workspace"
+	OpExport   = "export_workspace" // guest → host tar.gz (snapshot)
 	OpExec     = "exec"
 	OpShutdown = "shutdown"
 )
@@ -36,6 +40,8 @@ type Response struct {
 	ExitCode int    `json:"exit_code,omitempty"`
 	Stdout   string `json:"stdout,omitempty"`
 	Stderr   string `json:"stderr,omitempty"`
+	// Tar is base64-encoded tar.gz for OpExport.
+	Tar string `json:"tar_b64,omitempty"`
 }
 
 // DefaultExecTimeout when Request.Timeout is 0.
