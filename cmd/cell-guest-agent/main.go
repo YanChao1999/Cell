@@ -25,6 +25,7 @@ import (
 )
 
 func main() {
+	prepareWritableMounts()
 	_ = os.MkdirAll("/workspace", 0o755)
 	applyNameserverFromCmdline()
 	port := uint32(guestproto.DefaultPort)
@@ -180,6 +181,31 @@ func runExec(req guestproto.Request) guestproto.Response {
 		}
 	}
 	return resp
+}
+
+// prepareWritableMounts makes /workspace, /tmp, and /etc usable when the
+// rootfs is mounted read-only (MicroVM M3). Best-effort on RW roots.
+func prepareWritableMounts() {
+	if !etcWritable() {
+		_ = os.MkdirAll("/run/etc-ro", 0o755)
+		_ = exec.Command("sh", "-c", "cp -a /etc/. /run/etc-ro/ 2>/dev/null || true").Run()
+		_ = exec.Command("mount", "-t", "tmpfs", "tmpfs", "/etc").Run()
+		_ = exec.Command("sh", "-c", "cp -a /run/etc-ro/. /etc/ 2>/dev/null || true").Run()
+	}
+	for _, dir := range []string{"/workspace", "/tmp", "/var/tmp", "/run"} {
+		_ = os.MkdirAll(dir, 0o755)
+		_ = exec.Command("mount", "-t", "tmpfs", "tmpfs", dir).Run()
+	}
+}
+
+func etcWritable() bool {
+	f, err := os.OpenFile("/etc/.cell-write-test", os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return false
+	}
+	_ = f.Close()
+	_ = os.Remove("/etc/.cell-write-test")
+	return true
 }
 
 // applyNameserverFromCmdline seeds /etc/resolv.conf from cell.nameserver=<ip>

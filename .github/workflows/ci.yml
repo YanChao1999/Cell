@@ -107,3 +107,37 @@ jobs:
 
       - name: Compile SDK
         run: python -m compileall -q sdk/python/src
+
+  microvm-rootfs:
+    name: Ultra-tiny MicroVM rootfs
+    runs-on: ubuntu-latest
+    needs: go
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build rootfs
+        env:
+          CELL_MICROVM_DIR: ${{ runner.temp }}/cell-microvm
+        run: |
+          chmod +x scripts/build-microvm-rootfs.sh
+          ./scripts/build-microvm-rootfs.sh
+          BYTES=$(wc -c <"$CELL_MICROVM_DIR/rootfs.ext4" | tr -d ' ')
+          echo "rootfs_bytes=$BYTES"
+          # Soft target ~6MiB; hard fail above 32MiB (ultra-tiny budget).
+          if [ "$BYTES" -gt $((32 * 1024 * 1024)) ]; then
+            echo "rootfs exceeds 32MiB ultra-tiny budget: $BYTES bytes" >&2
+            exit 1
+          fi
+
+      - name: Upload rootfs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cell-microvm-rootfs
+          path: ${{ runner.temp }}/cell-microvm/rootfs.ext4
+          if-no-files-found: error
+          retention-days: 14

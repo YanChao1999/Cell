@@ -41,13 +41,13 @@ Track: ops / security ops / isolation / product. Docs under `docs/ops/`, `docs/s
 |-------|--------|
 | Ops | PLAYBOOK / UPGRADE / RELEASE; compose CI; `scripts/release.sh`; `internal/version` |
 | Security ops | Threat model + escape checklist; `govulncheck`; Dependabot; digest-pinned golang bases |
-| Isolation | MicroVM M1+M2 (Firecracker + guest-agent + jailer + none/allowlist); Docker `--pids-limit` |
+| Isolation | MicroVM M1–M3 (Firecracker + guest-agent + jailer + none/allowlist + ultra-tiny RO rootfs); Docker `--pids-limit` |
 | Product | SUPPORT matrix (no SLA); Pages isolation demo |
 
-Post-P1: MicroVM M3, mTLS, expand runbooks from incidents, registry image promotion automation.
+Post-P1: mTLS, expand runbooks from incidents, registry image promotion automation.
 
 ### MicroVM backend (real VMM)
-- M0–M2 landed (Firecracker + `cell-guest-agent` vsock; jailer; `none`/`allowlist` egress). M3: rootfs pipeline. See `internal/worker/runtime/microvm/DESIGN.md`.
+- M0–M3 landed (Firecracker + `cell-guest-agent` vsock; jailer; `none`/`allowlist` egress; ultra-tiny RO rootfs with busybox + `rg`). See `internal/worker/runtime/microvm/DESIGN.md`.
 
 ### Hardening polish
 - Seed size/latency tuning; optional content hashing of seeded files.

@@ -81,6 +81,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /v1/cells/{id}", s.handleGet)
 	s.mux.HandleFunc("DELETE /v1/cells/{id}", s.handleDelete)
 	s.mux.HandleFunc("POST /v1/cells/{id}/exec", s.handleExec)
+	s.mux.HandleFunc("POST /v1/cells/{id}/snapshot", s.handleSnapshot)
 	s.mux.HandleFunc("POST /v1/run", s.handleRun)
 	s.mux.HandleFunc("POST /v1/workers/register", s.handleWorkerRegister)
 	s.mux.HandleFunc("POST /v1/workers/{id}/heartbeat", s.handleWorkerHeartbeat)
@@ -328,6 +329,12 @@ func (s *Server) createCellInner(ctx context.Context, req cellapi.CreateCellRequ
 	cell, err := worker.CreateCell(ctx, req)
 	if err != nil {
 		return nil, err
+	}
+	if req.SnapshotID != "" {
+		if err := s.restoreSnapshot(ctx, worker, cell.ID, req.SnapshotID); err != nil {
+			_ = worker.DestroyCell(ctx, cell.ID)
+			return nil, err
+		}
 	}
 	ttl := parseTTL(req.TTL)
 	now := time.Now().UTC()

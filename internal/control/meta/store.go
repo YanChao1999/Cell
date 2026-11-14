@@ -30,6 +30,14 @@ type Store struct {
 	path string
 }
 
+// Dir returns the state directory (may be empty for memory-only stores).
+func (s *Store) Dir() string {
+	if s == nil {
+		return ""
+	}
+	return s.dir
+}
+
 // New creates a Store. If stateDir is non-empty, records are persisted to
 // stateDir/cells.json under ~/.cell/state/ typically.
 func New(stateDir string) (*Store, error) {

@@ -12,7 +12,33 @@ pip install -e .
 
 Requires Python ≥ 3.10 and a running `celld` daemon.
 
-## Quick start
+## Quick start (E2B-style)
+
+```python
+import asyncio
+from cell import Sandbox
+
+async def main() -> None:
+    async with await Sandbox.create(environment="python-3.12") as sbx:
+        result = await sbx.commands.run("python -c 'print(40+2)'")
+        print(result.stdout)  # 42
+        snap = await sbx.snapshot()
+        print(snap.id)
+
+asyncio.run(main())
+```
+
+Restore later:
+
+```python
+async with await Sandbox.create(
+    environment="python-3.12",
+    snapshot_id=snap.id,
+) as sbx:
+    ...
+```
+
+## Classic Client API
 
 ```python
 import asyncio
@@ -35,16 +61,12 @@ asyncio.run(main())
 
 ## One-shot run
 
-Create, exec a list of commands, and destroy in a single call:
-
 ```python
 result = await client.run(
     repo="https://github.com/example/app",
     environment="python-3.12",
     commands=["pip install -e .", "pytest"],
 )
-for r in result.results:
-    print(r.exit_code, r.stdout)
 ```
 
 ## Connection

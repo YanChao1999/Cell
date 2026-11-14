@@ -89,4 +89,16 @@ func (r *Runtime) Destroy(ctx context.Context, cellID string) error {
 	return r.backend.Halt(ctx, cellID)
 }
 
+// ResyncWorkspace re-pushes the host workspace into a running guest (snapshot restore).
+func (r *Runtime) ResyncWorkspace(ctx context.Context, cellID, workspace string) error {
+	if r == nil || r.backend == nil {
+		return fmt.Errorf("%w: microVM backend", runtime.ErrNotImplemented)
+	}
+	fc, ok := r.backend.(*Firecracker)
+	if !ok {
+		return fmt.Errorf("microvm: resync unsupported for backend %T", r.backend)
+	}
+	return fc.Resync(ctx, cellID, workspace)
+}
+
 var _ runtime.Runtime = (*Runtime)(nil)

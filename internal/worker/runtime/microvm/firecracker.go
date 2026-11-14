@@ -196,6 +196,20 @@ func (f *Firecracker) Exec(ctx context.Context, opts runtime.ExecOpts) (*api.Exe
 	}, nil
 }
 
+// Resync re-uploads the host workspace into a booted guest.
+func (f *Firecracker) Resync(ctx context.Context, cellID, workspace string) error {
+	f.mu.Lock()
+	cell := f.cells[cellID]
+	f.mu.Unlock()
+	if cell == nil {
+		return fmt.Errorf("microvm: unknown cell %q", cellID)
+	}
+	if workspace == "" {
+		workspace = cell.opts.Workspace
+	}
+	return cell.syncWorkspace(ctx, workspace)
+}
+
 func (f *Firecracker) Halt(ctx context.Context, cellID string) error {
 	f.mu.Lock()
 	cell := f.cells[cellID]
@@ -282,11 +296,12 @@ func (c *fcCell) configure(ctx context.Context) error {
 	}); err != nil {
 		return fmt.Errorf("boot-source: %w", err)
 	}
+	// M3: rootfs is read-only; guest agent mounts tmpfs on /workspace and /tmp.
 	if err := c.putJSON(ctx, http.MethodPut, "http://localhost/drives/rootfs", map[string]any{
 		"drive_id":       "rootfs",
 		"path_on_host":   rootfs,
 		"is_root_device": true,
-		"is_read_only":   false,
+		"is_read_only":   true,
 	}); err != nil {
 		return fmt.Errorf("drives/rootfs: %w", err)
 	}

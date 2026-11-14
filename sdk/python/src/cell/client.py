@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from cell.types import CellInfo, ExecResult, Limits, RunResult
+from cell.types import CellInfo, ExecResult, Limits, RunResult, SnapshotInfo
 
 
 def _default_endpoint() -> str:
@@ -216,6 +216,7 @@ class Client:
         prefer_local: bool = True,
         limits: Limits | dict[str, str] | None = None,
         client_worker_id: str | None = None,
+        snapshot_id: str | None = None,
     ) -> Cell:
         body: dict[str, Any] = {
             "repo": repo,
@@ -230,10 +231,16 @@ class Client:
             )
         if client_worker_id is not None:
             body["client_worker_id"] = client_worker_id
+        if snapshot_id is not None:
+            body["snapshot_id"] = snapshot_id
 
         data = await self._request("POST", "/v1/cells", json=body)
         info = CellInfo.from_dict(data)
         return Cell(self, info)
+
+    async def snapshot(self, cell_id: str) -> SnapshotInfo:
+        data = await self._request("POST", f"/v1/cells/{cell_id}/snapshot")
+        return SnapshotInfo.from_dict(data)
 
     async def exec(
         self,
@@ -250,6 +257,10 @@ class Client:
 
     async def destroy(self, cell_id: str) -> None:
         await self._request("DELETE", f"/v1/cells/{cell_id}")
+
+    async def snapshot_cell(self, cell_id: str) -> SnapshotInfo:
+        """Alias kept for clarity; prefer ``snapshot``."""
+        return await self.snapshot(cell_id)
 
     async def get(self, cell_id: str) -> CellInfo:
         data = await self._request("GET", f"/v1/cells/{cell_id}")

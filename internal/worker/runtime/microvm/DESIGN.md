@@ -19,7 +19,7 @@ Selecting `CELL_RUNTIME=microvm` never silently falls back to Docker/host. Missi
 ## Boot flow
 
 1. `scripts/fetch-microvm-artifacts.sh` → `~/.cell/runtime/microvm/{firecracker,vmlinux}` (+ jailer)
-2. Operator supplies `rootfs.ext4` with `/usr/local/bin/cell-guest-agent` (default `init=`)
+2. Ultra-tiny `rootfs.ext4` via `scripts/build-microvm-rootfs.sh` (agent + busybox, ~6MiB, no journal); mounted **read-only**; guest agent tmpfs-mounts `/workspace` `/tmp` `/etc`
 3. Network policy: `none` (no NIC) or `allowlist` (TAP + host `cell-egress` + DNS on TAP IP:53); `default`/`open` rejected
 4. VMM starts via **jailer** unless `CELL_MICROVM_ALLOW_UNJAILED=1` (non-prod)
 5. Configure machine, rootfs, optional eth0, vsock → `InstanceStart` (allowlist adds `cell.nameserver=<hostIP>`)
@@ -34,7 +34,7 @@ Selecting `CELL_RUNTIME=microvm` never silently falls back to Docker/host. Missi
 | M0 | Fail-closed Runtime + Config + `CELL_RUNTIME=microvm` | done |
 | M1 | Firecracker Backend + vsock guest agent + artifact fetch script | done |
 | M2 | Egress parity (`none` / allowlist host proxy + DNS); jailer / non-root | done |
-| M3 | Rootfs build pipeline in CI + nested-virt integration job | open |
+| M3 | Ultra-tiny rootfs (`scripts/build-microvm-rootfs.sh`, RO root + tmpfs) + CI | done |
 
 ## Env
 
@@ -50,4 +50,6 @@ Selecting `CELL_RUNTIME=microvm` never silently falls back to Docker/host. Missi
 | `CELL_MICROVM_VCPUS` | `1` |
 | `CELL_MICROVM_VSOCK_PORT` | `5032` |
 
-Requires `/dev/kvm`, Firecracker-compatible kernel/rootfs, and (for allowlist) `CAP_NET_ADMIN` (TAP) plus bind on `:53` for the DNS forwarder. Residual: rootfs still writable (M3).
+Requires `/dev/kvm`, Firecracker-compatible kernel/rootfs, and (for allowlist) `CAP_NET_ADMIN` (TAP) plus bind on `:53` for the DNS forwarder.
+
+Optional rootfs knobs: `CELL_MICROVM_ROOTFS_MB` (fixed size), `CELL_BUSYBOX_BIN` (static busybox), `CELL_RG_BIN` / `CELL_RG_VERSION` / `CELL_MICROVM_SKIP_RG=1`. Guest ships agent applets (`grep`/`find`/`sed`/`awk`/…) plus static `rg`. CI builds rootfs and fails if the image exceeds 32MiB.

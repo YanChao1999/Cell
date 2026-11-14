@@ -122,6 +122,46 @@ func (w *Worker) DestroyCell(ctx context.Context, cellID string) error {
 	return err
 }
 
+// PackWorkspace downloads the remote workspace archive.
+func (w *Worker) PackWorkspace(ctx context.Context, cellID string, dest io.Writer) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, w.endpoint+"/worker/v1/cells/"+cellID+"/workspace", nil)
+	if err != nil {
+		return err
+	}
+	auth.SetBearer(req.Header, w.token)
+	resp, err := w.httpClient().Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode >= 300 {
+		data, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("remote %s: pack workspace: %s: %s", w.id, resp.Status, data)
+	}
+	_, err = io.Copy(dest, resp.Body)
+	return err
+}
+
+// UnpackWorkspace uploads an archive into the remote workspace.
+func (w *Worker) UnpackWorkspace(ctx context.Context, cellID string, src io.Reader) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, w.endpoint+"/worker/v1/cells/"+cellID+"/workspace", src)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/gzip")
+	auth.SetBearer(req.Header, w.token)
+	resp, err := w.httpClient().Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode >= 300 {
+		data, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("remote %s: unpack workspace: %s: %s", w.id, resp.Status, data)
+	}
+	return nil
+}
+
 // PullCache downloads a warm cache key into dest layout.
 func (w *Worker) PullCache(ctx context.Context, key string, dest *cache.Layout) error {
 	if dest == nil {
