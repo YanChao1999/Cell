@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Sequence
 
 from cell.client import Cell, Client
+from cell.files import Files
 from cell.types import CellInfo, ExecResult, Limits, RunResult, SnapshotInfo
 
 
@@ -29,6 +30,7 @@ class Sandbox:
     Example::
 
         async with await Sandbox.create(environment="python-3.12") as sbx:
+            await sbx.files.write("hello.txt", "hi")
             result = await sbx.commands.run("pytest -q")
             snap = await sbx.snapshot()
     """
@@ -37,6 +39,7 @@ class Sandbox:
         self._cell = cell
         self._client = client
         self.commands = Commands(cell)
+        self.files = Files(cell)
 
     @property
     def id(self) -> str:
@@ -45,6 +48,11 @@ class Sandbox:
     @property
     def info(self) -> CellInfo:
         return self._cell.info
+
+    @property
+    def is_running(self) -> bool:
+        status = (self._cell.status or "").lower()
+        return status in ("", "running", "ready", "active")
 
     @classmethod
     async def create(
@@ -84,7 +92,7 @@ class Sandbox:
         return sbx
 
     async def snapshot(self) -> SnapshotInfo:
-        return await self._client.snapshot(self.id)
+        return await self._cell.snapshot()
 
     async def kill(self) -> None:
         await self._cell.destroy()

@@ -210,6 +210,20 @@ func (f *Firecracker) Resync(ctx context.Context, cellID, workspace string) erro
 	return cell.syncWorkspace(ctx, workspace)
 }
 
+// Pull downloads the guest /workspace into the host workspace directory (snapshot).
+func (f *Firecracker) Pull(ctx context.Context, cellID, workspace string) error {
+	f.mu.Lock()
+	cell := f.cells[cellID]
+	f.mu.Unlock()
+	if cell == nil {
+		return fmt.Errorf("microvm: unknown cell %q", cellID)
+	}
+	if workspace == "" {
+		workspace = cell.opts.Workspace
+	}
+	return cell.exportWorkspace(ctx, workspace)
+}
+
 func (f *Firecracker) Halt(ctx context.Context, cellID string) error {
 	f.mu.Lock()
 	cell := f.cells[cellID]
@@ -389,6 +403,28 @@ func (c *fcCell) syncWorkspace(ctx context.Context, workspace string) error {
 		return fmt.Errorf("microvm: sync workspace: %s", resp.Error)
 	}
 	return nil
+}
+
+func (c *fcCell) exportWorkspace(ctx context.Context, workspace string) error {
+	req := guestproto.Request{Op: guestproto.OpExport}
+	resp, err := c.roundTrip(ctx, req, 60*time.Second)
+	if err != nil {
+		return err
+	}
+	if !resp.OK {
+		return fmt.Errorf("microvm: export workspace: %s", resp.Error)
+	}
+	raw, err := base64.StdEncoding.DecodeString(resp.Tar)
+	if err != nil {
+		return fmt.Errorf("microvm: export decode: %w", err)
+	}
+	if err := os.RemoveAll(workspace); err != nil {
+		return fmt.Errorf("microvm: clear host workspace: %w", err)
+	}
+	if err := os.MkdirAll(workspace, 0o755); err != nil {
+		return err
+	}
+	return untarGzDir(bytes.NewReader(raw), workspace)
 }
 
 func (c *fcCell) roundTrip(ctx context.Context, req guestproto.Request, timeout time.Duration) (*guestproto.Response, error) {

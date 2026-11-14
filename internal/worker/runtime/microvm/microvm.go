@@ -101,4 +101,16 @@ func (r *Runtime) ResyncWorkspace(ctx context.Context, cellID, workspace string)
 	return fc.Resync(ctx, cellID, workspace)
 }
 
+// PullWorkspace copies guest /workspace onto the host path (snapshot capture).
+func (r *Runtime) PullWorkspace(ctx context.Context, cellID, workspace string) error {
+	if r == nil || r.backend == nil {
+		return fmt.Errorf("%w: microVM backend", runtime.ErrNotImplemented)
+	}
+	fc, ok := r.backend.(*Firecracker)
+	if !ok {
+		return fmt.Errorf("microvm: pull unsupported for backend %T", r.backend)
+	}
+	return fc.Pull(ctx, cellID, workspace)
+}
+
 var _ runtime.Runtime = (*Runtime)(nil)

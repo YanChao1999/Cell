@@ -20,7 +20,8 @@ from cell import Sandbox
 
 async def main() -> None:
     async with await Sandbox.create(environment="python-3.12") as sbx:
-        result = await sbx.commands.run("python -c 'print(40+2)'")
+        await sbx.files.write("main.py", "print(40+2)\n")
+        result = await sbx.commands.run("python main.py")
         print(result.stdout)  # 42
         snap = await sbx.snapshot()
         print(snap.id)

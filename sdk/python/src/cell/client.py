@@ -83,6 +83,9 @@ class Cell:
     async def destroy(self) -> None:
         await self._client.destroy(self.id)
 
+    async def snapshot(self) -> SnapshotInfo:
+        return await self._client.snapshot(self.id)
+
     async def refresh(self) -> CellInfo:
         self._info = await self._client.get(self.id)
         return self._info

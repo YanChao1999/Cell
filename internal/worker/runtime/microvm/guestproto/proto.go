@@ -14,6 +14,7 @@ const (
 const (
 	OpPing     = "ping"
 	OpSync     = "sync_workspace"
+	OpExport   = "export_workspace" // guest → host tar.gz (snapshot)
 	OpExec     = "exec"
 	OpShutdown = "shutdown"
 )
@@ -36,6 +37,8 @@ type Response struct {
 	ExitCode int    `json:"exit_code,omitempty"`
 	Stdout   string `json:"stdout,omitempty"`
 	Stderr   string `json:"stderr,omitempty"`
+	// Tar is base64-encoded tar.gz for OpExport.
+	Tar string `json:"tar_b64,omitempty"`
 }
 
 // DefaultExecTimeout when Request.Timeout is 0.

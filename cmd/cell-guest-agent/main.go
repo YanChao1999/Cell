@@ -85,6 +85,12 @@ func dispatch(req guestproto.Request) guestproto.Response {
 			return guestproto.Response{OK: false, Error: err.Error()}
 		}
 		return guestproto.Response{OK: true}
+	case guestproto.OpExport:
+		b64, err := exportWorkspace()
+		if err != nil {
+			return guestproto.Response{OK: false, Error: err.Error()}
+		}
+		return guestproto.Response{OK: true, Tar: b64}
 	case guestproto.OpExec:
 		return runExec(req)
 	case guestproto.OpShutdown:
@@ -92,6 +98,59 @@ func dispatch(req guestproto.Request) guestproto.Response {
 	default:
 		return guestproto.Response{OK: false, Error: "unknown op"}
 	}
+}
+
+func exportWorkspace() (string, error) {
+	var buf bytes.Buffer
+	gw := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gw)
+	err := filepath.Walk("/workspace", func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel("/workspace", path)
+		if err != nil {
+			return err
+		}
+		if rel == "." {
+			return nil
+		}
+		rel = filepath.ToSlash(rel)
+		hdr, err := tar.FileInfoHeader(info, "")
+		if err != nil {
+			return err
+		}
+		hdr.Name = rel
+		if info.IsDir() {
+			hdr.Name += "/"
+		}
+		if err := tw.WriteHeader(hdr); err != nil {
+			return err
+		}
+		if info.IsDir() || !info.Mode().IsRegular() {
+			return nil
+		}
+		f, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		_, copyErr := io.Copy(tw, f)
+		_ = f.Close()
+		return copyErr
+	})
+	if err != nil {
+		_ = tw.Close()
+		_ = gw.Close()
+		return "", err
+	}
+	if err := tw.Close(); err != nil {
+		_ = gw.Close()
+		return "", err
+	}
+	if err := gw.Close(); err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(buf.Bytes()), nil
 }
 
 func syncWorkspace(tarB64 string) error {

@@ -5,9 +5,9 @@ All notable changes to Cell are documented here. Versioning follows semver-ish `
 ## [Unreleased]
 
 - MicroVM M2: jailer boot path; `network: none` / `allowlist` (TAP + host cell-egress + DNS forwarder); reject open NAT
-- MicroVM M3: ultra-tiny rootfs (`scripts/build-microvm-rootfs.sh`, ~6MiB, no journal) mounted read-only; guest tmpfs for `/workspace` `/tmp` `/etc`; CI size gate ≤32MiB + artifact
-- Python SDK: E2B-style `Sandbox.create` / `commands.run`
-- Workspace snapshot + restore API (agent session resume)
+- MicroVM M3: ultra-tiny rootfs (`scripts/build-microvm-rootfs.sh`, ~11MiB with busybox applets + static `rg`, no journal) mounted read-only; guest tmpfs for `/workspace` `/tmp` `/etc`; CI size gate ≤32MiB + artifact
+- Python SDK: E2B-style `Sandbox.create` / `commands.run` / `files.write|read|list` + snapshot restore via `snapshot_id`
+- Workspace snapshot + restore API (`POST /v1/cells/{id}/snapshot`); microVM pulls guest `/workspace` before pack (`export_workspace`)
 - Dependabot: bump GitHub Actions majors (checkout/setup-go/setup-python/deploy-pages/login-action)
 
 ## [0.7.0] — 2026-11-12

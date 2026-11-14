@@ -14,11 +14,16 @@ import (
 )
 
 // PackWorkspace writes a gzip tar of the Cell host workspace to w.
+// For microVM, guest /workspace is pulled to the host first so agent edits are captured.
 func (lw *LocalWorker) PackWorkspace(ctx context.Context, cellID string, w io.Writer) error {
-	_ = ctx
 	cell, err := lw.getCell(cellID)
 	if err != nil {
 		return err
+	}
+	if puller, ok := lw.rt.(workspacePuller); ok {
+		if err := puller.PullWorkspace(ctx, cellID, cell.Workspace); err != nil {
+			return err
+		}
 	}
 	return tarGzDir(cell.Workspace, w)
 }
@@ -41,6 +46,10 @@ func (lw *LocalWorker) UnpackWorkspace(ctx context.Context, cellID string, r io.
 
 type workspaceResyncer interface {
 	ResyncWorkspace(ctx context.Context, cellID, workspace string) error
+}
+
+type workspacePuller interface {
+	PullWorkspace(ctx context.Context, cellID, workspace string) error
 }
 
 func (lw *LocalWorker) getCell(cellID string) (*workerapi.Cell, error) {

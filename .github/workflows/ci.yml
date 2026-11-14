@@ -108,6 +108,9 @@ jobs:
       - name: Compile SDK
         run: python -m compileall -q sdk/python/src
 
+      - name: Unit tests
+        run: python -m unittest discover -s sdk/python/tests -v
+
   microvm-rootfs:
     name: Ultra-tiny MicroVM rootfs
     runs-on: ubuntu-latest
@@ -123,16 +126,21 @@ jobs:
       - name: Build rootfs
         env:
           CELL_MICROVM_DIR: ${{ runner.temp }}/cell-microvm
+          # Pin musl rg for reproducible CI (matches scripts/build-microvm-rootfs.sh).
+          CELL_RG_VERSION: 15.2.0
         run: |
           chmod +x scripts/build-microvm-rootfs.sh
           ./scripts/build-microvm-rootfs.sh
           BYTES=$(wc -c <"$CELL_MICROVM_DIR/rootfs.ext4" | tr -d ' ')
           echo "rootfs_bytes=$BYTES"
-          # Soft target ~6MiB; hard fail above 32MiB (ultra-tiny budget).
+          # Soft target ~11MiB with rg; hard fail above 32MiB (ultra-tiny budget).
           if [ "$BYTES" -gt $((32 * 1024 * 1024)) ]; then
             echo "rootfs exceeds 32MiB ultra-tiny budget: $BYTES bytes" >&2
             exit 1
           fi
+          # Confirm agent tools landed.
+          debugfs -R 'stat /usr/bin/rg' "$CELL_MICROVM_DIR/rootfs.ext4" | grep -q 'Type: regular'
+          debugfs -R 'stat /bin/grep' "$CELL_MICROVM_DIR/rootfs.ext4" | grep -q 'Type: symlink'
 
       - name: Upload rootfs artifact
         uses: actions/upload-artifact@v4
