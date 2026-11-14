@@ -91,26 +91,27 @@ func (r *Runtime) Destroy(ctx context.Context, cellID string) error {
 
 // ResyncWorkspace re-pushes the host workspace into a running guest (snapshot restore).
 func (r *Runtime) ResyncWorkspace(ctx context.Context, cellID, workspace string) error {
-	if r == nil || r.backend == nil {
-		return fmt.Errorf("%w: microVM backend", runtime.ErrNotImplemented)
-	}
-	fc, ok := r.backend.(*Firecracker)
-	if !ok {
-		return fmt.Errorf("microvm: resync unsupported for backend %T", r.backend)
-	}
-	return fc.Resync(ctx, cellID, workspace)
+	return r.withFirecracker(func(fc *Firecracker) error {
+		return fc.Resync(ctx, cellID, workspace)
+	})
 }
 
 // PullWorkspace copies guest /workspace onto the host path (snapshot capture).
 func (r *Runtime) PullWorkspace(ctx context.Context, cellID, workspace string) error {
+	return r.withFirecracker(func(fc *Firecracker) error {
+		return fc.Pull(ctx, cellID, workspace)
+	})
+}
+
+func (r *Runtime) withFirecracker(fn func(*Firecracker) error) error {
 	if r == nil || r.backend == nil {
 		return fmt.Errorf("%w: microVM backend", runtime.ErrNotImplemented)
 	}
 	fc, ok := r.backend.(*Firecracker)
 	if !ok {
-		return fmt.Errorf("microvm: pull unsupported for backend %T", r.backend)
+		return fmt.Errorf("microvm: operation unsupported for backend %T", r.backend)
 	}
-	return fc.Pull(ctx, cellID, workspace)
+	return fn(fc)
 }
 
 var _ runtime.Runtime = (*Runtime)(nil)

@@ -198,20 +198,19 @@ func (f *Firecracker) Exec(ctx context.Context, opts runtime.ExecOpts) (*api.Exe
 
 // Resync re-uploads the host workspace into a booted guest.
 func (f *Firecracker) Resync(ctx context.Context, cellID, workspace string) error {
-	f.mu.Lock()
-	cell := f.cells[cellID]
-	f.mu.Unlock()
-	if cell == nil {
-		return fmt.Errorf("microvm: unknown cell %q", cellID)
-	}
-	if workspace == "" {
-		workspace = cell.opts.Workspace
-	}
-	return cell.syncWorkspace(ctx, workspace)
+	return f.withCellWorkspace(cellID, workspace, func(cell *fcCell, ws string) error {
+		return cell.syncWorkspace(ctx, ws)
+	})
 }
 
 // Pull downloads the guest /workspace into the host workspace directory (snapshot).
 func (f *Firecracker) Pull(ctx context.Context, cellID, workspace string) error {
+	return f.withCellWorkspace(cellID, workspace, func(cell *fcCell, ws string) error {
+		return cell.exportWorkspace(ctx, ws)
+	})
+}
+
+func (f *Firecracker) withCellWorkspace(cellID, workspace string, fn func(*fcCell, string) error) error {
 	f.mu.Lock()
 	cell := f.cells[cellID]
 	f.mu.Unlock()
@@ -221,7 +220,7 @@ func (f *Firecracker) Pull(ctx context.Context, cellID, workspace string) error 
 	if workspace == "" {
 		workspace = cell.opts.Workspace
 	}
-	return cell.exportWorkspace(ctx, workspace)
+	return fn(cell, workspace)
 }
 
 func (f *Firecracker) Halt(ctx context.Context, cellID string) error {
