@@ -141,6 +141,7 @@ jobs:
           # Confirm agent tools landed.
           debugfs -R 'stat /usr/bin/rg' "$CELL_MICROVM_DIR/rootfs.ext4" | grep -q 'Type: regular'
           debugfs -R 'stat /bin/grep' "$CELL_MICROVM_DIR/rootfs.ext4" | grep -q 'Type: symlink'
+          debugfs -R 'stat /bin/base64' "$CELL_MICROVM_DIR/rootfs.ext4" | grep -q 'Type: symlink'
 
       - name: Upload rootfs artifact
         uses: actions/upload-artifact@v4

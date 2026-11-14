@@ -322,6 +322,9 @@ func (s *Server) createCell(ctx context.Context, req cellapi.CreateCellRequest) 
 }
 
 func (s *Server) createCellInner(ctx context.Context, req cellapi.CreateCellRequest) (*cellapi.CellInfo, error) {
+	if req.SnapshotID != "" && !validSnapshotID(req.SnapshotID) {
+		return nil, fmt.Errorf("invalid snapshot_id")
+	}
 	worker, err := s.scheduler.Place(req)
 	if err != nil {
 		return nil, err

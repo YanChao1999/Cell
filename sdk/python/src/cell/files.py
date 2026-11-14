@@ -45,9 +45,8 @@ class Files:
 
     async def list(self, path: str = ".") -> list[str]:
         rel = _workspace_rel(path)
-        result = await self._cell.exec(
-            f"find {shlex.quote(rel)} -maxdepth 1 -mindepth 1 -printf '%f\\n' | sort"
-        )
+        # Prefer ls (busybox/coreutils) over GNU find -printf for MicroVM rootfs.
+        result = await self._cell.exec(f"ls -1A -- {shlex.quote(rel)} | sort")
         if result.exit_code != 0:
             raise FileNotFoundError(
                 f"files.list({path!r}): {result.stderr or result.stdout}"

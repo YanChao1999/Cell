@@ -47,8 +47,8 @@ BUSYBOX_APPLETS=(
   sh ash mount umount mkdir printf echo cat cp ls sleep ln rm mv chmod
   # Agent search / text
   grep find sed awk tr head tail wc sort uniq xargs cut
-  # Archives / checksums
-  tar gzip gunzip sha256sum
+  # Archives / checksums / Files API
+  tar gzip gunzip sha256sum base64
   # Misc shell helpers
   test true false env pwd which clear diff
 )

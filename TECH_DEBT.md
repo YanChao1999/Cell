@@ -48,6 +48,7 @@ Post-P1: mTLS, expand runbooks from incidents, registry image promotion automati
 
 ### MicroVM backend (real VMM)
 - M0–M3 landed (Firecracker + `cell-guest-agent` vsock; jailer; `none`/`allowlist` egress; ultra-tiny RO rootfs with busybox + `rg`). See `internal/worker/runtime/microvm/DESIGN.md`.
+- MicroVM workspace sync/snapshot still single-frame (`MaxFrameBytes` 64MiB); chunked export needed for large agent workspaces.
 
 ### Hardening polish
 - Seed size/latency tuning; optional content hashing of seeded files.

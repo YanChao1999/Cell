@@ -28,11 +28,18 @@ func (lw *LocalWorker) PackWorkspace(ctx context.Context, cellID string, w io.Wr
 	return tarGzDir(cell.Workspace, w)
 }
 
-// UnpackWorkspace extracts a gzip tar into the Cell host workspace.
+// UnpackWorkspace replaces the Cell host workspace with a gzip tar.
+// Existing contents are wiped first so restore does not merge leftovers.
 // When the runtime supports it (microVM), the guest workspace is re-synced.
 func (lw *LocalWorker) UnpackWorkspace(ctx context.Context, cellID string, r io.Reader) error {
 	cell, err := lw.getCell(cellID)
 	if err != nil {
+		return err
+	}
+	if err := os.RemoveAll(cell.Workspace); err != nil {
+		return fmt.Errorf("workspace archive: clear %s: %w", cell.Workspace, err)
+	}
+	if err := os.MkdirAll(cell.Workspace, 0o755); err != nil {
 		return err
 	}
 	if err := untarGzDir(r, cell.Workspace); err != nil {

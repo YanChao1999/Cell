@@ -6,7 +6,10 @@ import "time"
 const (
 	// DefaultPort is the vsock port the guest agent listens on.
 	DefaultPort = 5032
-	// MaxFrameBytes caps a single request/response frame (workspace sync chunks inclusive).
+	// MaxFrameBytes caps a single request/response frame (workspace sync/export
+	// inclusive). MicroVM snapshot capture/restore of workspaces that exceed this
+	// after JSON+base64 encoding will fail closed; Docker/host pack paths stream
+	// and are not bound by this limit. Chunked export is future work.
 	MaxFrameBytes = 64 << 20
 )
 

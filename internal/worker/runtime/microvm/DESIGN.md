@@ -26,7 +26,8 @@ Selecting `CELL_RUNTIME=microvm` never silently falls back to Docker/host. Missi
 6. Guest agent seeds `/etc/resolv.conf` from cmdline; host also applies via exec after ping
 7. Host waits for agent `ping`, tar.gz-syncs workspace over vsock
 8. `Exec` merges allowlist `HTTP_PROXY*` into guest env; `Destroy` tears down TAP/proxy/DNS
-9. Snapshot: host `export_workspace` pulls guest `/workspace` → host, then packs tar.gz; restore unpacks + `sync_workspace`
+9. Snapshot: host `export_workspace` pulls guest `/workspace` → host, then packs tar.gz; restore wipes host workspace, unpacks, then `sync_workspace`
+10. MicroVM sync/export is a single vsock JSON frame (`MaxFrameBytes` = 64MiB). Larger workspaces fail closed on microVM; Docker/host streaming pack is uncapped.
 
 ## Milestones
 

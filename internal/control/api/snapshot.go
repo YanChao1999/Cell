@@ -9,11 +9,15 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"time"
 
 	cellapi "github.com/YanChao1999/Cell/api"
 	"github.com/YanChao1999/Cell/internal/workerapi"
 )
+
+// snapshotIDRe matches IDs from newSnapshotID (32 lowercase hex chars).
+var snapshotIDRe = regexp.MustCompile(`^[0-9a-f]{32}$`)
 
 func (s *Server) snapshotDir() (string, error) {
 	base := s.meta.Dir()
@@ -54,7 +58,11 @@ func (s *Server) handleSnapshot(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	path := filepath.Join(dir, snapID+".tar.gz")
+	path, err := snapshotPath(dir, snapID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	f, err := os.Create(path)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
@@ -92,13 +100,32 @@ func (s *Server) restoreSnapshot(ctx context.Context, worker workerapi.Worker, c
 	if err != nil {
 		return err
 	}
-	path := filepath.Join(dir, snapshotID+".tar.gz")
+	path, err := snapshotPath(dir, snapshotID)
+	if err != nil {
+		return err
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return fmt.Errorf("snapshot %s: %w", snapshotID, err)
 	}
 	defer func() { _ = f.Close() }()
 	return arch.UnpackWorkspace(ctx, cellID, f)
+}
+
+func snapshotPath(dir, snapshotID string) (string, error) {
+	if !validSnapshotID(snapshotID) {
+		return "", fmt.Errorf("invalid snapshot_id")
+	}
+	cleanDir := filepath.Clean(dir)
+	path := filepath.Join(cleanDir, snapshotID+".tar.gz")
+	if filepath.Dir(path) != cleanDir {
+		return "", fmt.Errorf("invalid snapshot_id")
+	}
+	return path, nil
+}
+
+func validSnapshotID(id string) bool {
+	return snapshotIDRe.MatchString(id)
 }
 
 func newSnapshotID() (string, error) {

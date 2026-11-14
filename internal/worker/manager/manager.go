@@ -176,10 +176,15 @@ func (w *LocalWorker) CreateCell(ctx context.Context, req api.CreateCellRequest)
 		return nil, err
 	}
 
-	if err := w.source.Fetch(ctx, req.Repo, req.Ref, ws); err != nil {
-		_ = os.RemoveAll(ws)
-		w.removeCell(id)
-		return nil, err
+	// Snapshot restore replaces the workspace after Create; skip fetch/setup
+	// so template steps do not mutate state that will be wiped.
+	fromSnapshot := req.SnapshotID != ""
+	if !fromSnapshot {
+		if err := w.source.Fetch(ctx, req.Repo, req.Ref, ws); err != nil {
+			_ = os.RemoveAll(ws)
+			w.removeCell(id)
+			return nil, err
+		}
 	}
 
 	image, limits, envVars, mounts, network, egressAllow, setup, err := w.resolveEnv(req)
@@ -232,7 +237,7 @@ func (w *LocalWorker) CreateCell(ctx context.Context, req api.CreateCellRequest)
 	cell.DiskLimit = limits.Disk
 	w.mu.Unlock()
 
-	if len(setup) > 0 {
+	if !fromSnapshot && len(setup) > 0 {
 		w.mu.Lock()
 		cell.Status = "setup"
 		w.mu.Unlock()
