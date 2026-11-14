@@ -198,19 +198,16 @@ func (f *Firecracker) Exec(ctx context.Context, opts runtime.ExecOpts) (*api.Exe
 
 // Resync re-uploads the host workspace into a booted guest.
 func (f *Firecracker) Resync(ctx context.Context, cellID, workspace string) error {
-	return f.withCellWorkspace(cellID, workspace, func(cell *fcCell, ws string) error {
-		return cell.syncWorkspace(ctx, ws)
-	})
+	return f.xferWorkspace(ctx, cellID, workspace, false)
 }
 
 // Pull downloads the guest /workspace into the host workspace directory (snapshot).
 func (f *Firecracker) Pull(ctx context.Context, cellID, workspace string) error {
-	return f.withCellWorkspace(cellID, workspace, func(cell *fcCell, ws string) error {
-		return cell.exportWorkspace(ctx, ws)
-	})
+	return f.xferWorkspace(ctx, cellID, workspace, true)
 }
 
-func (f *Firecracker) withCellWorkspace(cellID, workspace string, fn func(*fcCell, string) error) error {
+// xferWorkspace moves workspace data: pull=false host→guest, pull=true guest→host.
+func (f *Firecracker) xferWorkspace(ctx context.Context, cellID, workspace string, pull bool) error {
 	f.mu.Lock()
 	cell := f.cells[cellID]
 	f.mu.Unlock()
@@ -220,7 +217,10 @@ func (f *Firecracker) withCellWorkspace(cellID, workspace string, fn func(*fcCel
 	if workspace == "" {
 		workspace = cell.opts.Workspace
 	}
-	return fn(cell, workspace)
+	if pull {
+		return cell.exportWorkspace(ctx, workspace)
+	}
+	return cell.syncWorkspace(ctx, workspace)
 }
 
 func (f *Firecracker) Halt(ctx context.Context, cellID string) error {
