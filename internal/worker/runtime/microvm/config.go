@@ -107,6 +107,9 @@ func (c Config) Validate() error {
 	if _, err := lookPath(c.VMM); err != nil {
 		return fmt.Errorf("microvm: VMM %q not found on PATH: %w", c.VMM, err)
 	}
+	if _, err := resolveJailer(c); err != nil {
+		return err
+	}
 	for _, p := range []struct{ name, path string }{
 		{"kernel", c.Kernel},
 		{"rootfs", c.Rootfs},

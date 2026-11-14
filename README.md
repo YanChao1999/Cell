@@ -191,4 +191,4 @@ docker compose -f docker-compose.yml -f docker-compose.obs.yml up -d
 - Threat model: [docs/security/THREAT_MODEL.md](docs/security/THREAT_MODEL.md)
 - Docker escape checklist: [docs/security/ESCAPE_CHECKLIST.md](docs/security/ESCAPE_CHECKLIST.md)
 
-`CELL_RUNTIME=microvm` selects the Firecracker Backend (M1). Fetch VMM/kernel with `./scripts/fetch-microvm-artifacts.sh`, supply a rootfs that includes `cell-guest-agent`, then point `CELL_MICROVM_DIR` at the artifacts. Design notes: `internal/worker/runtime/microvm/DESIGN.md`. Remaining gaps (mTLS, microVM M2 egress/jailer) are in [TECH_DEBT.md](TECH_DEBT.md).
+`CELL_RUNTIME=microvm` selects the Firecracker Backend (M2: jailer + `none`/`allowlist` egress). Fetch VMM/kernel with `./scripts/fetch-microvm-artifacts.sh`, supply a rootfs that includes `cell-guest-agent`, then point `CELL_MICROVM_DIR` at the artifacts. Production needs jailer on PATH (dev/CI may set `CELL_MICROVM_ALLOW_UNJAILED=1`). Design notes: `internal/worker/runtime/microvm/DESIGN.md`. Remaining gaps (mTLS, microVM M3 rootfs CI) are in [TECH_DEBT.md](TECH_DEBT.md).

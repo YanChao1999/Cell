@@ -64,6 +64,9 @@ func (r *Runtime) Create(ctx context.Context, opts runtime.CreateOpts) error {
 	if r.backend == nil {
 		return fmt.Errorf("%w: microVM backend (unsupported CELL_MICROVM_VMM; use firecracker)", runtime.ErrNotImplemented)
 	}
+	if _, err := validateNetworkOpts(opts); err != nil {
+		return err
+	}
 	if err := r.cfg.Validate(); err != nil {
 		return err
 	}

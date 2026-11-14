@@ -18,7 +18,7 @@ Cell is an execution boundary for untrusted agent work. This document states wha
 
 | Area | Status |
 |------|--------|
-| MicroVM isolation | Firecracker M1 (boot/exec/destroy via vsock agent) — requires `/dev/kvm` + operator rootfs; no egress allowlist parity yet (M2) |
+| MicroVM isolation | Firecracker M2 (jailer + vsock agent; `network: none` or `allowlist`) — requires `/dev/kvm`, jailer (or explicit `CELL_MICROVM_ALLOW_UNJAILED`), operator rootfs; allowlist needs `CAP_NET_ADMIN` for TAP; rootfs still writable (M3) |
 | mTLS control↔worker | Planned; HMAC tokens are the current trust boundary |
 | Multi-region / HA control | Single control process; restart recovers registry from disk |
 | Windows / macOS workers | Not validated |
