@@ -20,11 +20,12 @@ Selecting `CELL_RUNTIME=microvm` never silently falls back to Docker/host. Missi
 
 1. `scripts/fetch-microvm-artifacts.sh` → `~/.cell/runtime/microvm/{firecracker,vmlinux}` (+ jailer)
 2. Operator supplies `rootfs.ext4` with `/usr/local/bin/cell-guest-agent` (default `init=`)
-3. Network policy: `none` (no NIC) or `allowlist` (TAP + host `cell-egress`); `default`/`open` rejected
+3. Network policy: `none` (no NIC) or `allowlist` (TAP + host `cell-egress` + DNS on TAP IP:53); `default`/`open` rejected
 4. VMM starts via **jailer** unless `CELL_MICROVM_ALLOW_UNJAILED=1` (non-prod)
-5. Configure machine, rootfs, optional eth0, vsock → `InstanceStart`
-6. Host waits for agent `ping`, tar.gz-syncs workspace over vsock
-7. `Exec` merges allowlist `HTTP_PROXY*` into guest env; `Destroy` halts VMM + tears down TAP/proxy
+5. Configure machine, rootfs, optional eth0, vsock → `InstanceStart` (allowlist adds `cell.nameserver=<hostIP>`)
+6. Guest agent seeds `/etc/resolv.conf` from cmdline; host also applies via exec after ping
+7. Host waits for agent `ping`, tar.gz-syncs workspace over vsock
+8. `Exec` merges allowlist `HTTP_PROXY*` into guest env; `Destroy` tears down TAP/proxy/DNS
 
 ## Milestones
 
@@ -32,7 +33,7 @@ Selecting `CELL_RUNTIME=microvm` never silently falls back to Docker/host. Missi
 |----|-------------|--------|
 | M0 | Fail-closed Runtime + Config + `CELL_RUNTIME=microvm` | done |
 | M1 | Firecracker Backend + vsock guest agent + artifact fetch script | done |
-| M2 | Egress parity (`none` / allowlist host proxy); jailer / non-root | done |
+| M2 | Egress parity (`none` / allowlist host proxy + DNS); jailer / non-root | done |
 | M3 | Rootfs build pipeline in CI + nested-virt integration job | open |
 
 ## Env
@@ -49,4 +50,4 @@ Selecting `CELL_RUNTIME=microvm` never silently falls back to Docker/host. Missi
 | `CELL_MICROVM_VCPUS` | `1` |
 | `CELL_MICROVM_VSOCK_PORT` | `5032` |
 
-Requires `/dev/kvm`, Firecracker-compatible kernel/rootfs, and (for allowlist) `CAP_NET_ADMIN` to create TAP devices. Residual: rootfs still writable (M3).
+Requires `/dev/kvm`, Firecracker-compatible kernel/rootfs, and (for allowlist) `CAP_NET_ADMIN` (TAP) plus bind on `:53` for the DNS forwarder. Residual: rootfs still writable (M3).

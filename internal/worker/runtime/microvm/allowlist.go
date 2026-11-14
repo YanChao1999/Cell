@@ -23,6 +23,7 @@ type allowlistNet struct {
 	guestMAC string
 	cidr     int // /24
 	proxy    *egress.Server
+	dns      *dnsForwarder
 	audit    *os.File
 	proxyEnv map[string]string
 }
@@ -94,6 +95,12 @@ func setupAllowlist(ctx context.Context, opts runtime.CreateOpts) (*allowlistNet
 		return nil, fmt.Errorf("microvm: start egress proxy: %w", err)
 	}
 	n.proxy = proxy
+	dns, err := startDNSForwarder(hostIP, nil)
+	if err != nil {
+		_ = n.cleanup(context.Background())
+		return nil, err
+	}
+	n.dns = dns
 	proxyURL := "http://" + net.JoinHostPort(hostIP, "3128")
 	n.proxyEnv = map[string]string{
 		"HTTP_PROXY":  proxyURL,
@@ -103,14 +110,18 @@ func setupAllowlist(ctx context.Context, opts runtime.CreateOpts) (*allowlistNet
 		"NO_PROXY":    "localhost,127.0.0.1," + hostIP,
 		"no_proxy":    "localhost,127.0.0.1," + hostIP,
 	}
-	log.Printf("microvm: allowlist tap=%s host=%s guest=%s proxy=%s allow=%v",
-		tapName, hostIP, guestIP, proxyURL, opts.EgressAllow)
+	log.Printf("microvm: allowlist tap=%s host=%s guest=%s proxy=%s dns=%s:53 allow=%v",
+		tapName, hostIP, guestIP, proxyURL, hostIP, opts.EgressAllow)
 	return n, nil
 }
 
 func (n *allowlistNet) cleanup(ctx context.Context) error {
 	if n == nil {
 		return nil
+	}
+	if n.dns != nil {
+		_ = n.dns.Close()
+		n.dns = nil
 	}
 	if n.proxy != nil {
 		_ = n.proxy.Close(ctx)
@@ -151,11 +162,13 @@ func subnetOctet(cellID string) int {
 	return int(h.Sum32()%254) + 1
 }
 
-// bootIPArg returns a Linux ip= kernel parameter for static addressing.
+// bootIPArg returns a Linux ip= kernel parameter for static addressing plus
+// cell.nameserver=<hostIP> for the guest agent to seed /etc/resolv.conf.
 func (n *allowlistNet) bootIPArg() string {
 	if n == nil {
 		return ""
 	}
 	// ip=<client-IP>::<gw-IP>:<netmask>:<hostname>:<device>:<autoconf>
-	return fmt.Sprintf("ip=%s::%s:255.255.255.0:cell:eth0:off", n.guestIP, n.hostIP)
+	return fmt.Sprintf("ip=%s::%s:255.255.255.0:cell:eth0:off cell.nameserver=%s",
+		n.guestIP, n.hostIP, n.hostIP)
 }

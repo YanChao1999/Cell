@@ -26,6 +26,7 @@ import (
 
 func main() {
 	_ = os.MkdirAll("/workspace", 0o755)
+	applyNameserverFromCmdline()
 	port := uint32(guestproto.DefaultPort)
 	ln, err := vsock.Listen(port, nil)
 	if err != nil {
@@ -179,6 +180,37 @@ func runExec(req guestproto.Request) guestproto.Response {
 		}
 	}
 	return resp
+}
+
+// applyNameserverFromCmdline seeds /etc/resolv.conf from cell.nameserver=<ip>
+// on the kernel cmdline (set by the host allowlist boot path).
+func applyNameserverFromCmdline() {
+	raw, err := os.ReadFile("/proc/cmdline")
+	if err != nil {
+		return
+	}
+	ns := nameserverFromCmdline(string(raw))
+	if ns == "" {
+		return
+	}
+	content := "nameserver " + ns + "\n"
+	if err := os.WriteFile("/etc/resolv.conf", []byte(content), 0o644); err != nil {
+		log.Printf("cell-guest-agent: resolv.conf: %v", err)
+		return
+	}
+	log.Printf("cell-guest-agent: nameserver %s", ns)
+}
+
+func nameserverFromCmdline(cmdline string) string {
+	for _, field := range strings.Fields(cmdline) {
+		if strings.HasPrefix(field, "cell.nameserver=") {
+			ip := strings.TrimPrefix(field, "cell.nameserver=")
+			if net.ParseIP(ip) != nil {
+				return ip
+			}
+		}
+	}
+	return ""
 }
 
 // local copies of frame helpers to avoid importing the host microvm package's vsock dial.

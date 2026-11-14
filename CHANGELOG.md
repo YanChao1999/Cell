@@ -4,7 +4,7 @@ All notable changes to Cell are documented here. Versioning follows semver-ish `
 
 ## [Unreleased]
 
-- MicroVM M2: jailer boot path; `network: none` / `allowlist` (TAP + host cell-egress); reject open NAT
+- MicroVM M2: jailer boot path; `network: none` / `allowlist` (TAP + host cell-egress + DNS forwarder); reject open NAT
 - Dependabot: bump GitHub Actions majors (checkout/setup-go/setup-python/deploy-pages/login-action)
 
 ## [0.7.0] — 2026-11-12

@@ -140,6 +140,12 @@ func (f *Firecracker) Boot(ctx context.Context, cellID string, opts runtime.Crea
 	if err := cell.waitAgent(ctx); err != nil {
 		return fail(err)
 	}
+	if allow != nil {
+		// Belt-and-suspenders: agent also applies cell.nameserver= from cmdline.
+		if err := cell.applyGuestNameserver(ctx, allow.hostIP); err != nil {
+			return fail(err)
+		}
+	}
 	if opts.Workspace != "" {
 		if err := cell.syncWorkspace(ctx, opts.Workspace); err != nil {
 			return fail(err)
