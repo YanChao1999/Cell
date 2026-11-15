@@ -43,11 +43,11 @@ Artifacts dir: $DIR
   firecracker → $DIR/firecracker
   jailer      → $DIR/jailer     (required in prod; or CELL_MICROVM_ALLOW_UNJAILED=1)
   kernel      → $DIR/vmlinux   (required)
-  rootfs      → $DIR/rootfs.ext4 (required; must include /usr/local/bin/cell-guest-agent as init)
+  rootfs      → $DIR/rootfs.ext4 (ultra-tiny; build with scripts/build-microvm-rootfs.sh)
 
-Build a minimal rootfs (example):
-  CGO_ENABLED=0 go build -o cell-guest-agent ./cmd/cell-guest-agent
-  # then pack agent + busybox/alpine into an ext4 image named rootfs.ext4
+Build rootfs (agent + busybox applets + static rg, auto-sized ~8–32MiB, RO at runtime):
+  ./scripts/build-microvm-rootfs.sh
+  # optional: CELL_MICROVM_ROOTFS_MB=16 CELL_BUSYBOX_BIN=… CELL_RG_BIN=… CELL_MICROVM_SKIP_RG=1
 
 Env:
   export PATH=\"$DIR:\$PATH\"

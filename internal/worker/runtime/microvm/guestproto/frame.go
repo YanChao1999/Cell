@@ -14,7 +14,7 @@ func WriteFrame(w io.Writer, v any) error {
 		return err
 	}
 	if len(b) > MaxFrameBytes {
-		return fmt.Errorf("guestproto: frame too large (%d)", len(b))
+		return fmt.Errorf("guestproto: frame too large (%d > %d); microVM workspace sync/snapshot exceeds MaxFrameBytes", len(b), MaxFrameBytes)
 	}
 	var hdr [4]byte
 	binary.BigEndian.PutUint32(hdr[:], uint32(len(b)))

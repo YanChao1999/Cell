@@ -2,6 +2,7 @@
 package httpserver
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"net"
@@ -43,6 +44,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /worker/v1/cells", s.handleCreate)
 	s.mux.HandleFunc("POST /worker/v1/cells/{id}/exec", s.handleExec)
 	s.mux.HandleFunc("DELETE /worker/v1/cells/{id}", s.handleDestroy)
+	s.mux.HandleFunc("GET /worker/v1/cells/{id}/workspace", s.handleWorkspaceGet)
+	s.mux.HandleFunc("PUT /worker/v1/cells/{id}/workspace", s.handleWorkspacePut)
 	s.mux.HandleFunc("GET /worker/v1/caches/{key}", s.handleCacheGet)
 }
 
@@ -100,6 +103,27 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDestroy(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if err := s.worker.DestroyCell(r.Context(), id); err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleWorkspaceGet(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var buf bytes.Buffer
+	if err := s.worker.PackWorkspace(r.Context(), id, &buf); err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "application/gzip")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(buf.Bytes())
+}
+
+func (s *Server) handleWorkspacePut(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := s.worker.UnpackWorkspace(r.Context(), id, r.Body); err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}

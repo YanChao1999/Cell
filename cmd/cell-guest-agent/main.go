@@ -25,6 +25,7 @@ import (
 )
 
 func main() {
+	prepareWritableMounts()
 	_ = os.MkdirAll("/workspace", 0o755)
 	applyNameserverFromCmdline()
 	port := uint32(guestproto.DefaultPort)
@@ -84,6 +85,12 @@ func dispatch(req guestproto.Request) guestproto.Response {
 			return guestproto.Response{OK: false, Error: err.Error()}
 		}
 		return guestproto.Response{OK: true}
+	case guestproto.OpExport:
+		b64, err := exportWorkspace()
+		if err != nil {
+			return guestproto.Response{OK: false, Error: err.Error()}
+		}
+		return guestproto.Response{OK: true, Tar: b64}
 	case guestproto.OpExec:
 		return runExec(req)
 	case guestproto.OpShutdown:
@@ -91,6 +98,59 @@ func dispatch(req guestproto.Request) guestproto.Response {
 	default:
 		return guestproto.Response{OK: false, Error: "unknown op"}
 	}
+}
+
+func exportWorkspace() (string, error) {
+	var buf bytes.Buffer
+	gw := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gw)
+	err := filepath.Walk("/workspace", func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel("/workspace", path)
+		if err != nil {
+			return err
+		}
+		if rel == "." {
+			return nil
+		}
+		rel = filepath.ToSlash(rel)
+		hdr, err := tar.FileInfoHeader(info, "")
+		if err != nil {
+			return err
+		}
+		hdr.Name = rel
+		if info.IsDir() {
+			hdr.Name += "/"
+		}
+		if err := tw.WriteHeader(hdr); err != nil {
+			return err
+		}
+		if info.IsDir() || !info.Mode().IsRegular() {
+			return nil
+		}
+		f, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		_, copyErr := io.Copy(tw, f)
+		_ = f.Close()
+		return copyErr
+	})
+	if err != nil {
+		_ = tw.Close()
+		_ = gw.Close()
+		return "", err
+	}
+	if err := tw.Close(); err != nil {
+		_ = gw.Close()
+		return "", err
+	}
+	if err := gw.Close(); err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(buf.Bytes()), nil
 }
 
 func syncWorkspace(tarB64 string) error {
@@ -180,6 +240,31 @@ func runExec(req guestproto.Request) guestproto.Response {
 		}
 	}
 	return resp
+}
+
+// prepareWritableMounts makes /workspace, /tmp, and /etc usable when the
+// rootfs is mounted read-only (MicroVM M3). Best-effort on RW roots.
+func prepareWritableMounts() {
+	if !etcWritable() {
+		_ = os.MkdirAll("/run/etc-ro", 0o755)
+		_ = exec.Command("sh", "-c", "cp -a /etc/. /run/etc-ro/ 2>/dev/null || true").Run()
+		_ = exec.Command("mount", "-t", "tmpfs", "tmpfs", "/etc").Run()
+		_ = exec.Command("sh", "-c", "cp -a /run/etc-ro/. /etc/ 2>/dev/null || true").Run()
+	}
+	for _, dir := range []string{"/workspace", "/tmp", "/var/tmp", "/run"} {
+		_ = os.MkdirAll(dir, 0o755)
+		_ = exec.Command("mount", "-t", "tmpfs", "tmpfs", dir).Run()
+	}
+}
+
+func etcWritable() bool {
+	f, err := os.OpenFile("/etc/.cell-write-test", os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return false
+	}
+	_ = f.Close()
+	_ = os.Remove("/etc/.cell-write-test")
+	return true
 }
 
 // applyNameserverFromCmdline seeds /etc/resolv.conf from cell.nameserver=<ip>

@@ -20,6 +20,16 @@ type CreateCellRequest struct {
 	Limits         Limits   `json:"limits,omitempty"`
 	ClientWorkerID string   `json:"client_worker_id,omitempty"`
 	CacheHints     []string `json:"cache_hints,omitempty"`
+	// SnapshotID restores a previously saved workspace tarball after create.
+	SnapshotID string `json:"snapshot_id,omitempty"`
+}
+
+// SnapshotInfo is returned by POST /v1/cells/{id}/snapshot.
+type SnapshotInfo struct {
+	ID        string `json:"id"`
+	CellID    string `json:"cell_id"`
+	Bytes     int64  `json:"bytes"`
+	CreatedAt string `json:"created_at"`
 }
 
 // CellInfo is returned by create/get/list.

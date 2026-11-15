@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Minimal Cell Python SDK example.
+"""Minimal Cell Python SDK example (E2B-style Sandbox).
 
 Requires a running celld daemon (default: ~/.cell/celld.sock).
 """
@@ -9,30 +9,23 @@ from __future__ import annotations
 import asyncio
 import sys
 
-from cell import Client
+from cell import Sandbox
 
 
 async def main() -> int:
-    repo = sys.argv[1] if len(sys.argv) > 1 else "https://github.com/example/app"
-    async with Client() as client:
-        cell = await client.create(
-            repo=repo,
-            ref="main",
-            environment="go-1.23",
-            ttl="30m",
-        )
-        print(f"created cell {cell.id} on worker {cell.worker_id}")
-        try:
-            result = await cell.exec("go test ./...")
-            print(f"exit={result.exit_code}")
-            if result.stdout:
-                print(result.stdout, end="")
-            if result.stderr:
-                print(result.stderr, end="", file=sys.stderr)
-            return result.exit_code
-        finally:
-            await cell.destroy()
-            print(f"destroyed cell {cell.id}")
+    env = sys.argv[1] if len(sys.argv) > 1 else "python-3.12"
+    async with await Sandbox.create(environment=env, ttl="15m") as sbx:
+        print(f"sandbox {sbx.id}")
+        await sbx.files.write("hello.txt", "cell\n")
+        result = await sbx.commands.run("cat hello.txt && grep -n cell hello.txt")
+        print(f"exit={result.exit_code}")
+        if result.stdout:
+            print(result.stdout, end="")
+        if result.stderr:
+            print(result.stderr, end="", file=sys.stderr)
+        snap = await sbx.snapshot()
+        print(f"snapshot {snap.id} ({snap.bytes} bytes)")
+        return result.exit_code
 
 
 if __name__ == "__main__":

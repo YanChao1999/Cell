@@ -20,6 +20,7 @@ class CreateCellRequest(TypedDict, total=False):
     prefer_local: bool
     limits: LimitsDict
     client_worker_id: str
+    snapshot_id: str
 
 
 class ExecRequest(TypedDict, total=False):
@@ -115,4 +116,21 @@ class RunResult:
             id=str(data.get("id", "")),
             results=results,
             destroyed=bool(data.get("destroyed", True)),
+        )
+
+
+@dataclass(frozen=True)
+class SnapshotInfo:
+    id: str
+    cell_id: str = ""
+    bytes: int = 0
+    created_at: str = ""
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> SnapshotInfo:
+        return cls(
+            id=str(data.get("id", "")),
+            cell_id=str(data.get("cell_id", "")),
+            bytes=int(data.get("bytes", 0)),
+            created_at=str(data.get("created_at", "")),
         )

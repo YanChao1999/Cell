@@ -196,6 +196,33 @@ func (f *Firecracker) Exec(ctx context.Context, opts runtime.ExecOpts) (*api.Exe
 	}, nil
 }
 
+// Resync re-uploads the host workspace into a booted guest.
+func (f *Firecracker) Resync(ctx context.Context, cellID, workspace string) error {
+	return f.xferWorkspace(ctx, cellID, workspace, false)
+}
+
+// Pull downloads the guest /workspace into the host workspace directory (snapshot).
+func (f *Firecracker) Pull(ctx context.Context, cellID, workspace string) error {
+	return f.xferWorkspace(ctx, cellID, workspace, true)
+}
+
+// xferWorkspace moves workspace data: pull=false host→guest, pull=true guest→host.
+func (f *Firecracker) xferWorkspace(ctx context.Context, cellID, workspace string, pull bool) error {
+	f.mu.Lock()
+	cell := f.cells[cellID]
+	f.mu.Unlock()
+	if cell == nil {
+		return fmt.Errorf("microvm: unknown cell %q", cellID)
+	}
+	if workspace == "" {
+		workspace = cell.opts.Workspace
+	}
+	if pull {
+		return cell.exportWorkspace(ctx, workspace)
+	}
+	return cell.syncWorkspace(ctx, workspace)
+}
+
 func (f *Firecracker) Halt(ctx context.Context, cellID string) error {
 	f.mu.Lock()
 	cell := f.cells[cellID]
@@ -282,11 +309,12 @@ func (c *fcCell) configure(ctx context.Context) error {
 	}); err != nil {
 		return fmt.Errorf("boot-source: %w", err)
 	}
+	// M3: rootfs is read-only; guest agent mounts tmpfs on /workspace and /tmp.
 	if err := c.putJSON(ctx, http.MethodPut, "http://localhost/drives/rootfs", map[string]any{
 		"drive_id":       "rootfs",
 		"path_on_host":   rootfs,
 		"is_root_device": true,
-		"is_read_only":   false,
+		"is_read_only":   true,
 	}); err != nil {
 		return fmt.Errorf("drives/rootfs: %w", err)
 	}
@@ -374,6 +402,28 @@ func (c *fcCell) syncWorkspace(ctx context.Context, workspace string) error {
 		return fmt.Errorf("microvm: sync workspace: %s", resp.Error)
 	}
 	return nil
+}
+
+func (c *fcCell) exportWorkspace(ctx context.Context, workspace string) error {
+	req := guestproto.Request{Op: guestproto.OpExport}
+	resp, err := c.roundTrip(ctx, req, 60*time.Second)
+	if err != nil {
+		return err
+	}
+	if !resp.OK {
+		return fmt.Errorf("microvm: export workspace: %s", resp.Error)
+	}
+	raw, err := base64.StdEncoding.DecodeString(resp.Tar)
+	if err != nil {
+		return fmt.Errorf("microvm: export decode: %w", err)
+	}
+	if err := os.RemoveAll(workspace); err != nil {
+		return fmt.Errorf("microvm: clear host workspace: %w", err)
+	}
+	if err := os.MkdirAll(workspace, 0o755); err != nil {
+		return err
+	}
+	return untarGzDir(bytes.NewReader(raw), workspace)
 }
 
 func (c *fcCell) roundTrip(ctx context.Context, req guestproto.Request, timeout time.Duration) (*guestproto.Response, error) {
