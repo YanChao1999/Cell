@@ -28,11 +28,12 @@ if [[ -n "${JAILER_BIN}" ]]; then
   install -m 0755 "$JAILER_BIN" "$DIR/jailer"
 fi
 
-# Official CI kernels are published alongside firecracker releases as vmlinux.
-# Prefer an operator-provided kernel; otherwise try the release asset name used by FC docs.
+# Prefer existing kernel; else FC release asset; else Amazon public quickstart kernel.
 if [[ ! -f "$DIR/vmlinux" ]]; then
   if curl -fsSL "${BASE}/vmlinux-${ARCH}.bin" -o "$DIR/vmlinux" 2>/dev/null; then
     echo "downloaded vmlinux-${ARCH}.bin"
+  elif curl -fsSL "https://s3.amazonaws.com/spec.ccfc.min/img/quickstart_guide/${ARCH}/kernels/vmlinux.bin" -o "$DIR/vmlinux" 2>/dev/null; then
+    echo "downloaded Firecracker quickstart vmlinux.bin (${ARCH})"
   else
     echo "NOTE: place a Firecracker-compatible vmlinux at ${DIR}/vmlinux" >&2
   fi

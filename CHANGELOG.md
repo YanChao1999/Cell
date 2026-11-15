@@ -2,18 +2,25 @@
 
 All notable changes to Cell are documented here. Versioning follows semver-ish `0.y.z` while the project is pre-1.0.
 
-## [Unreleased] — toward 0.8.0
+## [Unreleased]
 
-### Productization
+## [0.8.0] — 2026-11-15
+
+Productization cut: discoverability, MicroVM one-shot, MCP + DSH plugin.
+
+### Added
 - Quickstart + SUPPORT refresh; MicroVM one-shot `./scripts/setup-microvm.sh` + `microvm-smoke.sh`
-- MCP server (`integrations/mcp`, `cell-mcp`) for Cursor and other agents
-- DeepSeek Harness bundle (`integrations/dsh-cell`) with `cell_create` / `cell_exec` / `cell_snapshot` / `cell_kill`
-
-### Already on main (post-0.7.0)
+- MCP server (`integrations/mcp`, `cell-mcp`) for Cursor and other agents (`mcp>=1.0,<2` for FastMCP)
+- DeepSeek Harness bundle (`integrations/dsh-cell` / `dsh-plugin-cell`) with `cell_create` / `cell_exec` / `cell_snapshot` / `cell_kill`
 - MicroVM M2: jailer; `network: none` / `allowlist` (TAP + host egress + DNS)
-- MicroVM M3: ultra-tiny RO rootfs (~11MiB, busybox + `rg` + `base64`); CI rootfs artifact
+- MicroVM M3: ultra-tiny RO rootfs (~6–11MiB, busybox + optional `rg` + `base64`); CI rootfs artifact
 - Python SDK: E2B-style `Sandbox` / files / snapshot
 - Workspace snapshot API with hardened restore (`snapshot_id` validation, wipe-before-unpack, skip fetch/setup)
+- `fetch-microvm-artifacts.sh`: Firecracker quickstart S3 `vmlinux` fallback when release asset is missing
+
+### Notes
+- Host smoke without Docker uses env setup binaries on `PATH` (e.g. `go` for `go-1.23`; `python` → `python3` for `python-3.12`)
+- Full guest boot still needs `/dev/kvm` + rootfs; `CELL_MICROVM_SKIP_RG=1` when GitHub rate-limits `rg` downloads
 
 ## [0.7.0] — 2026-11-12
 
