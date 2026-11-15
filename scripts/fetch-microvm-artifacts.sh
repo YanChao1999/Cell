@@ -45,7 +45,8 @@ Artifacts dir: $DIR
   kernel      → $DIR/vmlinux   (required)
   rootfs      → $DIR/rootfs.ext4 (ultra-tiny; build with scripts/build-microvm-rootfs.sh)
 
-Build rootfs (agent + busybox applets + static rg, auto-sized ~8–32MiB, RO at runtime):
+One-shot (preferred): ./scripts/setup-microvm.sh
+Or build rootfs only:
   ./scripts/build-microvm-rootfs.sh
   # optional: CELL_MICROVM_ROOTFS_MB=16 CELL_BUSYBOX_BIN=… CELL_RG_BIN=… CELL_MICROVM_SKIP_RG=1
 
