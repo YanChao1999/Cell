@@ -123,25 +123,26 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Build rootfs
+      - name: Build rootfs (one-shot setup path)
         env:
           CELL_MICROVM_DIR: ${{ runner.temp }}/cell-microvm
           # Pin musl rg for reproducible CI (matches scripts/build-microvm-rootfs.sh).
           CELL_RG_VERSION: 15.2.0
         run: |
-          chmod +x scripts/build-microvm-rootfs.sh
+          chmod +x scripts/setup-microvm.sh scripts/build-microvm-rootfs.sh scripts/fetch-microvm-artifacts.sh scripts/microvm-smoke.sh
+          # Rootfs-only when FC download is flaky: still exercise build script.
           ./scripts/build-microvm-rootfs.sh
           BYTES=$(wc -c <"$CELL_MICROVM_DIR/rootfs.ext4" | tr -d ' ')
           echo "rootfs_bytes=$BYTES"
-          # Soft target ~11MiB with rg; hard fail above 32MiB (ultra-tiny budget).
           if [ "$BYTES" -gt $((32 * 1024 * 1024)) ]; then
             echo "rootfs exceeds 32MiB ultra-tiny budget: $BYTES bytes" >&2
             exit 1
           fi
-          # Confirm agent tools landed.
           debugfs -R 'stat /usr/bin/rg' "$CELL_MICROVM_DIR/rootfs.ext4" | grep -q 'Type: regular'
           debugfs -R 'stat /bin/grep' "$CELL_MICROVM_DIR/rootfs.ext4" | grep -q 'Type: symlink'
           debugfs -R 'stat /bin/base64' "$CELL_MICROVM_DIR/rootfs.ext4" | grep -q 'Type: symlink'
+          # Soft smoke against whatever artifacts exist (skips without KVM).
+          ./scripts/microvm-smoke.sh
 
       - name: Upload rootfs artifact
         uses: actions/upload-artifact@v4
@@ -150,3 +151,26 @@ jobs:
           path: ${{ runner.temp }}/cell-microvm/rootfs.ext4
           if-no-files-found: error
           retention-days: 14
+
+  integrations:
+    name: MCP + DSH plugin smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Compile MCP package
+        run: |
+          python -m compileall -q integrations/mcp/src
+          # Import-light check without installing mcp (optional dep in CI).
+          python -c "import ast; ast.parse(open('integrations/mcp/src/cell_mcp/server.py').read())"
+
+      - name: DSH plugin client smoke
+        run: node integrations/dsh-cell/src/client.test.js

@@ -2,14 +2,18 @@
 
 All notable changes to Cell are documented here. Versioning follows semver-ish `0.y.z` while the project is pre-1.0.
 
-## [Unreleased]
+## [Unreleased] — toward 0.8.0
 
-- MicroVM M2: jailer boot path; `network: none` / `allowlist` (TAP + host cell-egress + DNS forwarder); reject open NAT
-- MicroVM M3: ultra-tiny rootfs (`scripts/build-microvm-rootfs.sh`, ~11MiB with busybox applets + static `rg`, no journal) mounted read-only; guest tmpfs for `/workspace` `/tmp` `/etc`; CI size gate ≤32MiB + artifact
-- Python SDK: E2B-style `Sandbox.create` / `commands.run` / `files.write|read|list` + snapshot restore via `snapshot_id`
-- Workspace snapshot + restore API (`POST /v1/cells/{id}/snapshot`); microVM pulls guest `/workspace` before pack (`export_workspace`); restore validates `snapshot_id`, wipes workspace before unpack, skips fetch/setup when restoring
-- MicroVM note: workspace sync/snapshot capped at `guestproto.MaxFrameBytes` (64MiB JSON frame)
-- Dependabot: bump GitHub Actions majors (checkout/setup-go/setup-python/deploy-pages/login-action)
+### Productization
+- Quickstart + SUPPORT refresh; MicroVM one-shot `./scripts/setup-microvm.sh` + `microvm-smoke.sh`
+- MCP server (`integrations/mcp`, `cell-mcp`) for Cursor and other agents
+- DeepSeek Harness bundle (`integrations/dsh-cell`) with `cell_create` / `cell_exec` / `cell_snapshot` / `cell_kill`
+
+### Already on main (post-0.7.0)
+- MicroVM M2: jailer; `network: none` / `allowlist` (TAP + host egress + DNS)
+- MicroVM M3: ultra-tiny RO rootfs (~11MiB, busybox + `rg` + `base64`); CI rootfs artifact
+- Python SDK: E2B-style `Sandbox` / files / snapshot
+- Workspace snapshot API with hardened restore (`snapshot_id` validation, wipe-before-unpack, skip fetch/setup)
 
 ## [0.7.0] — 2026-11-12
 

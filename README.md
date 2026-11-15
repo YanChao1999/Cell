@@ -1,26 +1,43 @@
 # Cell
 
-Ephemeral isolated environments for AI coding agents.
+**Self-hosted sandboxes for AI coding agents** — MIT, E2B-style Python API, Docker or Firecracker isolation.
 
 > Formerly sketched as “Spark”; renamed to **Cell** to avoid collision with Apache Spark.
 
-A **Cell** is a disposable execution workspace: checkout code, install deps, build/test, return outputs, then destroy — while reusable caches survive.
+A **Cell** is a disposable execution workspace: checkout code, install deps, build/test, snapshot, destroy — while reusable caches survive. You run the control plane; data stays on your hosts.
 
-## Architecture
+**Start here:** [docs/quickstart.md](docs/quickstart.md) · Support: [docs/ops/SUPPORT.md](docs/ops/SUPPORT.md)
+
+| Path | Command |
+|------|---------|
+| Docker (default) | `go build -o bin/celld ./cmd/celld && ./bin/celld serve --mode=all --environments ./environments` |
+| MicroVM | `./scripts/setup-microvm.sh` then `CELL_RUNTIME=microvm ./bin/celld serve …` |
+| Python SDK | `pip install -e sdk/python` → `Sandbox.create` / `commands.run` / `files.*` / `snapshot` |
+| MCP (Cursor) | `pip install -e integrations/mcp` → `cell-mcp` |
+| DeepSeek Harness | `dsh plugin add ./integrations/dsh-cell` |
+
+## Why Cell (vs cloud sandboxes)
+
+| | Cell | Typical hosted sandbox |
+|--|------|-------------------------|
+| License / ops | MIT, you operate | Usage SaaS (+ optional OSS runtime) |
+| Isolation | Hardened Docker **or** Firecracker microVM | Usually Firecracker fleet |
+| Egress | `none` / `allowlist` + audit log | Vendor policy |
+| Snapshots | Workspace tar restore (`snapshot_id`) | Often memory pause/fork |
+| Fit | Self-host, air-gap-ish, DSH/Cursor plugins | Zero-ops cloud |
+
+Isolation story and diagrams: [ARCHITECTURE.md](ARCHITECTURE.md) · MicroVM design: `internal/worker/runtime/microvm/DESIGN.md`.
+
+## Architecture (short)
 
 - **Control plane** — HTTP Agent API, scheduler, meta store, TTL reaper
-- **Workers** — create / exec / destroy Cells; clients may also be workers
-- **Source** — `git clone --mirror` under `~/.cell/repos/<hash>`, then `git worktree add` into the workspace
-- **Runtime** — Docker (`docker run -d` + `docker exec` + `docker rm -f`) or host fallback
-- **Caches** — host dirs under `--cache-dir` (default `~/.cell/cache`); Docker bind-mounts via env template `cache_mounts`; host fallback sets `GOMODCACHE` / `GOCACHE` / `PIP_CACHE_DIR` / `CCACHE_DIR` / …
-- **Environments** — YAML under `environments/` (image, limits, `cache_mounts`, optional `default_exec_timeout`, egress `network`: `default` \| `none` \| `allowlist`). Allowlist Cells use `cell-egress`; set `CELL_EGRESS_UPSTREAM` (or host `HTTPS_PROXY`) so the sidecar can reach the internet through a corporate proxy.
-- **Placement** — `prefer_local` → warm `cache_hints` → free capacity
-- **Sticky Exec** — meta maps `cell_id → worker_id`
-- **Disposable Cells**, durable caches / mirrors
+- **Workers** — create / exec / destroy / snapshot; local or remote
+- **Source** — `git clone --mirror` + worktree into the workspace
+- **Runtime** — Docker (default), host (dev), or `CELL_RUNTIME=microvm`
+- **Caches** — durable host dirs; env templates declare mounts
+- **Network** — `default` \| `none` \| `allowlist` (`cell-egress`)
 
-Module and repository: `github.com/YanChao1999/Cell`.
-
-Component, class, and sequence diagrams are in [ARCHITECTURE.md](ARCHITECTURE.md).
+Module: `github.com/YanChao1999/Cell` · version `0.8.0-dev` (toward productization cut).
 
 ## Build
 
@@ -28,11 +45,9 @@ Component, class, and sequence diagrams are in [ARCHITECTURE.md](ARCHITECTURE.md
 export PATH=$HOME/.local/bin:$HOME/.local/go/bin:/usr/local/go/bin:$PATH
 go build -o bin/celld ./cmd/celld
 go build -o bin/cell ./cmd/cell
-# Required for network: allowlist (Docker sidecar proxy)
 CGO_ENABLED=0 go build -o bin/cell-egress ./cmd/cell-egress
-# Optional dedicated sidecar image (recommended for allowlist on arbitrary Cell images)
-# ./scripts/build-egress-image.sh   # tags CELL_EGRESS_IMAGE or cell-egress:local
-go test ./internal/worker/cache/ ./internal/worker/auth/ ./internal/worker/envtemplate/ ./internal/worker/egress/ ./internal/worker/runtime/docker/ ./internal/worker/remote/ ./internal/control/registry/
+CGO_ENABLED=0 go build -o bin/cell-guest-agent ./cmd/cell-guest-agent
+go test ./internal/worker/... ./internal/control/... ./internal/version/
 ```
 
 ## Run (`mode=all`)
@@ -55,7 +70,46 @@ go test ./internal/worker/cache/ ./internal/worker/auth/ ./internal/worker/envte
 | `--environments` | `./environments` |
 | `--socket` | `<cell-home>/celld.sock` |
 
-Without a Docker daemon, celld logs a host-fallback line and create/exec/destroy still work; cache env vars point tools at `--cache-dir` subdirs.
+Without Docker, celld logs a host-fallback line (dev/CI only).
+
+## MicroVM (one shot)
+
+```bash
+./scripts/setup-microvm.sh          # firecracker + jailer + kernel + ~11MiB rootfs
+./scripts/microvm-smoke.sh          # artifact check; skips guest boot without /dev/kvm
+export PATH="$HOME/.cell/runtime/microvm:$PATH"
+export CELL_RUNTIME=microvm
+export CELL_MICROVM_DIR=$HOME/.cell/runtime/microvm
+export CELL_MICROVM_JAILER=$HOME/.cell/runtime/microvm/jailer
+# Dev only: export CELL_MICROVM_ALLOW_UNJAILED=1
+```
+
+CI uploads a `cell-microvm-rootfs` artifact from the Ultra-tiny MicroVM rootfs job (14-day retention).
+
+## Python SDK
+
+```bash
+pip install -e sdk/python
+```
+
+```python
+import asyncio
+from cell import Sandbox
+
+async def main():
+    async with await Sandbox.create(environment="python-3.12") as sbx:
+        await sbx.files.write("hi.py", "print(42)\n")
+        print((await sbx.commands.run("python hi.py")).stdout)
+        snap = await sbx.snapshot()
+        print(snap.id)
+
+asyncio.run(main())
+```
+
+## Integrations
+
+- **MCP** — [integrations/mcp](integrations/mcp/README.md) (`cell_create` / `cell_exec` / `cell_snapshot` / `cell_kill` / `cell_list`)
+- **DeepSeek Harness** — [integrations/dsh-cell](integrations/dsh-cell/README.md)
 
 ## Caches
 
@@ -63,132 +117,27 @@ On start, celld ensures well-known dirs under `--cache-dir`:
 
 `go-mod`, `go-build`, `pip-cache`, `python-venv`, `zephyr-modules`, `west-cache`, `yocto-downloads`, `yocto-sstate`, `ccache`
 
-Env templates declare mounts, e.g. `go-1.23.yaml`:
-
-```yaml
-cache_mounts:
-  - host: go-mod
-    container: /go/pkg/mod
-  - host: go-build
-    container: /root/.cache/go-build
-```
-
-Warm path: first Cell populates e.g. `~/.cell/cache/go-mod`; a later Cell with the same environment reuses the same bind/env.
+Env templates declare mounts (see `environments/`).
 
 ## TTL reaper
 
-Default Cell TTL is **30m** (override with create `ttl`, e.g. `"1h"`). The reaper ticks on start and every 15s, destroying expired Cells on their sticky worker and clearing meta.
+Default Cell TTL is **30m** (override with create `ttl`). The reaper ticks on start and every 15s.
 
-Embedded templates set a longer optional `default_exec_timeout` (Zephyr `2h`, embedded-linux `4h`) used when `exec` omits `timeout_seconds`.
-
-## Agent HTTP API (Unix socket)
-
-| Method | Path | Notes |
-|--------|------|--------|
-| GET | `/health` | liveness |
-| POST | `/v1/cells` | create (`repo`, `ref`, `environment`, `ttl`, `prefer_local`, `limits`, `client_worker_id`) |
-| GET | `/v1/cells` | list |
-| GET | `/v1/cells/{id}` | get |
-| POST | `/v1/cells/{id}/exec` | `{ "command", "timeout_seconds" }` → `exit_code`, `stdout`, `stderr` |
-| DELETE | `/v1/cells/{id}` | destroy |
-| POST | `/v1/run` | create → exec commands sequentially → destroy |
-
-```bash
-curl --unix-socket ~/.cell/celld.sock http://localhost/health
-curl --unix-socket ~/.cell/celld.sock -X POST http://localhost/v1/cells \
-  -H 'Content-Type: application/json' \
-  -d '{"environment":"go-1.23","ttl":"30m"}'
-curl --unix-socket ~/.cell/celld.sock -X POST http://localhost/v1/run \
-  -H 'Content-Type: application/json' \
-  -d '{"environment":"go-1.23","commands":["go version"]}'
-```
-
-## Python SDK (primary agent client)
-
-```bash
-uv venv .venv && uv pip install --python .venv/bin/python -e sdk/python
-```
-
-```python
-from cell import Client
-
-async with Client() as client:
-    c = await client.create(environment="go-1.23", ttl="30m")
-    result = await c.exec("go test ./...")
-    await c.destroy()
-    await client.run(environment="go-1.23", commands=["go version"])
-```
-
-`repo` is optional (empty = blank workspace). Endpoint: `CELL_ENDPOINT` or default `unix://~/.cell/celld.sock`. See `sdk/python/README.md`.
-
-## Ops CLI
-
-```bash
-./bin/cell health
-./bin/cell list
-./bin/cell run --env go-1.23 'echo hello'
-./bin/cell destroy <id>
-```
-
-Socket override: `CELL_SOCKET`.
-
-## Smoke
-
-```bash
-./scripts/smoke.sh
-```
-
-## CI
-
-GitHub Actions (`.github/workflows/ci.yml`) on push/PR to `main`:
-
-| Job | Checks |
-| --- | --- |
-| Go | `go build` + `golangci-lint` (`gofmt`, `govet`, `staticcheck`, `dupl`, …) |
-| API smoke | `scripts/smoke.sh` (host fallback; no Docker required) |
-| Python | `compileall` on `sdk/python` |
-
-Config: `.golangci.yml`.
-
-## Module
-
-`github.com/YanChao1999/Cell`
-
-## Tech debt
-
-### Mini cluster (Compose)
+## Cluster / observability
 
 ```bash
 docker compose up --build -d
 ./scripts/cluster-smoke.sh
-docker compose down -v
+# Optional Grafana/Prometheus: docker-compose.obs.yml
 ```
 
-Control listens on `localhost:18080`; workers register over HTTP and receive Create/Exec via worker RPC (`CELL_RUNTIME=host` in compose). Set `CELL_WORKER_TOKEN` (compose uses `cell-dev-token`) so register/heartbeat and `/worker/v1/*` require Bearer auth. Cold cache keys are pulled from warm peers on create (`GET /worker/v1/caches/{key}`).
-
-`GET /metrics` exposes Prometheus counters for create/exec/destroy. Workers may mint short-lived tokens via `POST /v1/auth/token` (HMAC over `CELL_WORKER_TOKEN`; optional `CELL_WORKER_TOKEN_PREV` for rotation). Control `--mode=control` keeps meta + worker registry on disk across restarts.
-
-### Metrics UI
-
-Built-in (no extra images): open **http://127.0.0.1:18080/metrics/ui** while control is running.
-
-Optional Prometheus + Grafana (images mirrored to **ghcr.io** via `Mirror obs images` workflow; override with `CELL_GRAFANA_IMAGE` / `CELL_PROM_IMAGE` if needed):
-
-```bash
-docker compose up --build -d
-docker compose -f docker-compose.yml -f docker-compose.obs.yml up -d
-# Grafana http://127.0.0.1:13000  (admin / cell)
-# Prometheus http://127.0.0.1:19090
-```
-
-### Ops & security (P1)
+## Ops & security
 
 - Support matrix: [docs/ops/SUPPORT.md](docs/ops/SUPPORT.md)
 - Restart / rolling: [docs/ops/PLAYBOOK.md](docs/ops/PLAYBOOK.md)
 - Upgrades: [docs/ops/UPGRADE.md](docs/ops/UPGRADE.md)
-- Release cut: [docs/ops/RELEASE.md](docs/ops/RELEASE.md) (`./scripts/release.sh 0.7.0`)
+- Release cut: [docs/ops/RELEASE.md](docs/ops/RELEASE.md) (`./scripts/release.sh 0.8.0` when ready)
 - Changelog: [CHANGELOG.md](CHANGELOG.md)
 - Threat model: [docs/security/THREAT_MODEL.md](docs/security/THREAT_MODEL.md)
-- Docker escape checklist: [docs/security/ESCAPE_CHECKLIST.md](docs/security/ESCAPE_CHECKLIST.md)
-
-`CELL_RUNTIME=microvm` selects the Firecracker Backend (M2 jailer + `none`/`allowlist` egress; M3 ultra-tiny RO rootfs). Fetch VMM/kernel with `./scripts/fetch-microvm-artifacts.sh`, build rootfs with `./scripts/build-microvm-rootfs.sh` (agent + busybox applets + `rg`, ~11MiB), then point `CELL_MICROVM_DIR` at the artifacts. Production needs jailer on PATH (dev/CI may set `CELL_MICROVM_ALLOW_UNJAILED=1`). Design notes: `internal/worker/runtime/microvm/DESIGN.md`. Remaining gaps (mTLS, …) are in [TECH_DEBT.md](TECH_DEBT.md).
+- Escape checklist: [docs/security/ESCAPE_CHECKLIST.md](docs/security/ESCAPE_CHECKLIST.md)
+- Tech debt: [TECH_DEBT.md](TECH_DEBT.md)

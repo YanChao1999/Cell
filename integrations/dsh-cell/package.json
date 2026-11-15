@@ -1,0 +1,37 @@
+{
+  "name": "dsh-plugin-cell",
+  "version": "0.1.0",
+  "description": "DeepSeek Harness plugin: Cell sandboxes (create/exec/snapshot/kill)",
+  "type": "module",
+  "license": "MIT",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./tools": "./src/tools.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/dsh-tools": "*"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/cordis": { "optional": true },
+    "@deepseek-ai/dsh-tools": { "optional": true }
+  },
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "cell",
+    "sandbox"
+  ]
+}

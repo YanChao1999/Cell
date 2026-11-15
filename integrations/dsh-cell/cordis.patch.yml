@@ -1,0 +1,10 @@
+# Bundle patch for DeepSeek Harness profiles.
+# Install: dsh plugin add ./integrations/dsh-cell
+- insert:
+    - id: cell-plugin
+      name: dsh-plugin-cell
+    - id: cell-tools
+      name: dsh-plugin-cell/tools
+      config:
+        # Override with unix socket or http URL to celld.
+        endpoint: ""
