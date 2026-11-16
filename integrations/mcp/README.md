@@ -7,8 +7,14 @@ Tools: `cell_create`, `cell_exec`, `cell_snapshot`, `cell_kill`, `cell_list`.
 ## Install
 
 ```bash
+# Editable (dev)
 pip install -e integrations/mcp
-# or from repo root with PYTHONPATH
+
+# From the v0.8.0 GitHub Release wheel
+pip install https://github.com/YanChao1999/Cell/releases/download/v0.8.0/cell_mcp-0.1.0-py3-none-any.whl
+
+# Pin MCP v1 (FastMCP); mcp 2.x renames FastMCP → MCPServer
+# dependencies: httpx, mcp>=1.0,<2
 ```
 
 Requires a reachable Cell daemon (`CELL_ENDPOINT`, default `unix://~/.cell/celld.sock`).
