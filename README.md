@@ -37,7 +37,7 @@ Isolation story and diagrams: [ARCHITECTURE.md](ARCHITECTURE.md) · MicroVM desi
 - **Caches** — durable host dirs; env templates declare mounts
 - **Network** — `default` \| `none` \| `allowlist` (`cell-egress`)
 
-Module: `github.com/YanChao1999/Cell` · version `0.8.0-dev` (toward productization cut).
+Module: `github.com/YanChao1999/Cell` · version `0.8.1-dev` (post-0.8.0).
 
 ## Build
 
