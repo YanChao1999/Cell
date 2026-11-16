@@ -42,7 +42,7 @@ jobs:
             ./internal/control/registry/ ./internal/control/metrics/ ./internal/version/
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v7
+        uses: golangci/golangci-lint-action@v9
         with:
           # v2.9.0+ is built with Go 1.26; older pins refuse go.mod go 1.26.
           version: v2.9.0
