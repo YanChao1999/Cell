@@ -145,7 +145,7 @@ jobs:
           ./scripts/microvm-smoke.sh
 
       - name: Upload rootfs artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cell-microvm-rootfs
           path: ${{ runner.temp }}/cell-microvm/rootfs.ext4
