@@ -1,0 +1,161 @@
+# Publish dsh-plugin-cell (npm) and/or cell-mcp (PyPI).
+# Prefer OIDC trusted publishing; NPM_TOKEN / PYPI_API_TOKEN are fallbacks.
+#
+# Operator setup: docs/ops/PUBLISH.md
+name: Publish packages
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      package:
+        description: Which package to publish
+        type: choice
+        options:
+          - both
+          - npm
+          - pypi
+        default: both
+      dry_run:
+        description: Build and pack only (do not upload)
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-packages-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  npm:
+    name: npm dsh-plugin-cell
+    if: >
+      github.event_name == 'release' ||
+      inputs.package == 'both' ||
+      inputs.package == 'npm'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: integrations/dsh-cell
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          registry-url: https://registry.npmjs.org
+
+      - name: Sanity — no install scripts, minimal files
+        run: |
+          node -e '
+            const p = require("./package.json");
+            if (p.scripts && Object.keys(p.scripts).length) {
+              console.error("refusing: package.json scripts must stay empty for supply-chain hygiene");
+              process.exit(1);
+            }
+            const files = p.files || [];
+            for (const f of files) {
+              if (/\.\.|^\//.test(f)) {
+                console.error("refusing: suspicious files entry", f);
+                process.exit(1);
+              }
+            }
+          '
+          node src/client.test.js
+
+      - name: Pack + content gate
+        run: |
+          npm pack
+          tar -tzf dsh-plugin-cell-*.tgz | tee /tmp/npm-pack.list
+          if grep -E '(^|/)(\.env|credentials|id_rsa|\.npmrc|celld\.sock)(/|$)' /tmp/npm-pack.list; then
+            echo "refusing: pack contains sensitive-looking paths" >&2
+            exit 1
+          fi
+
+      - name: Publish to npm
+        if: ${{ github.event_name == 'release' || inputs.dry_run == false }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [[ -z "${NODE_AUTH_TOKEN:-}" ]]; then
+            echo "NPM_TOKEN secret is empty. Configure it (or npm OIDC trusted publisher) — see docs/ops/PUBLISH.md" >&2
+            exit 1
+          fi
+          npm publish --access public --provenance
+
+      - name: Dry-run note
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        run: echo "dry_run=true — skipped npm publish; tarball built above"
+
+  pypi:
+    name: PyPI cell-mcp
+    if: >
+      github.event_name == 'release' ||
+      inputs.package == 'both' ||
+      inputs.package == 'pypi'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: integrations/mcp
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install build tooling
+        run: pip install --upgrade pip build
+
+      - name: Build sdist + wheel
+        run: |
+          python -m build
+          ls -la dist/
+
+      - name: Content gate
+        run: |
+          python - <<'PY'
+          import tarfile, zipfile, sys
+          from pathlib import Path
+          bad = (".env", "credentials", "id_rsa", ".pypirc", "celld.sock")
+          for path in Path("dist").iterdir():
+              names = []
+              if path.suffix == ".gz" or path.name.endswith(".tar.gz"):
+                  with tarfile.open(path) as tf:
+                      names = [m.name for m in tf.getmembers()]
+              elif path.suffix == ".whl":
+                  with zipfile.ZipFile(path) as zf:
+                      names = zf.namelist()
+              else:
+                  continue
+              print(path.name, len(names), "entries")
+              hits = [n for n in names if any(b in n for b in bad)]
+              if hits:
+                  print("refusing: sensitive-looking paths", hits, file=sys.stderr)
+                  sys.exit(1)
+          PY
+          python -m compileall -q src
+          python -c "import ast; ast.parse(open('src/cell_mcp/server.py').read())"
+
+      # OIDC Trusted Publishing only (no long-lived token in the default path).
+      # Fallback: set repo secret PYPI_API_TOKEN and add `password: ${{ secrets.PYPI_API_TOKEN }}`.
+      - name: Publish to PyPI (Trusted Publishing / OIDC)
+        if: ${{ github.event_name == 'release' || inputs.dry_run == false }}
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: integrations/mcp/dist
+          skip-existing: true
+          verbose: true
+
+      - name: Dry-run note
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        run: echo "dry_run=true — skipped PyPI upload; artifacts in dist/"

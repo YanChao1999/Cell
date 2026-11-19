@@ -25,6 +25,7 @@ The script:
 - [ ] GitHub Release: paste the `CHANGELOG` section; attach binaries + note CI `cell-microvm-rootfs` artifact
 - [ ] Compose users: `git checkout v0.8.0 && docker compose build && …` per [UPGRADE.md](UPGRADE.md)
 - [ ] Open a tiny PR or commit on main restoring `Version = "0.8.1-dev"` (script prints the exact sed)
+- [ ] npm / PyPI: after [PUBLISH.md](PUBLISH.md) credentials are ready, a Release `published` event runs `publish-packages.yml` (`dsh-plugin-cell`, `cell-mcp`). Dry-run via workflow_dispatch first.
 
 ## Image promotion (optional)
 

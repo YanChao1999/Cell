@@ -4,6 +4,9 @@ All notable changes to Cell are documented here. Versioning follows semver-ish `
 
 ## [Unreleased]
 
+### Added
+- CI: `publish-packages.yml` for `dsh-plugin-cell` (npm) + `cell-mcp` (PyPI); Dependabot for those trees; [docs/ops/PUBLISH.md](docs/ops/PUBLISH.md)
+
 ## [0.8.0] — 2026-11-15
 
 Productization cut: discoverability, MicroVM one-shot, MCP + DSH plugin.

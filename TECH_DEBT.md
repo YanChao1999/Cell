@@ -44,7 +44,7 @@ Track: ops / security ops / isolation / product. Docs under `docs/ops/`, `docs/s
 | Isolation | MicroVM M1–M3 (Firecracker + guest-agent + jailer + none/allowlist + ultra-tiny RO rootfs); Docker `--pids-limit` |
 | Product | SUPPORT matrix (no SLA); Pages isolation demo |
 
-Post-P1 / toward 0.8: mTLS, expand runbooks from incidents, registry image promotion automation; nested-virt guest-boot CI; chunked microVM export; publish `cell-mcp` / `dsh-plugin-cell` to package indexes.
+Post-P1 / toward 0.8+: mTLS, expand runbooks from incidents, registry image promotion automation; nested-virt guest-boot CI; chunked microVM export. Package publish workflow landed (`publish-packages.yml` + [PUBLISH.md](docs/ops/PUBLISH.md)); still need operator OIDC/token setup and optional `cell-sdk` job.
 
 ### MicroVM backend (real VMM)
 - M0–M3 landed (Firecracker + `cell-guest-agent` vsock; jailer; `none`/`allowlist` egress; ultra-tiny RO rootfs with busybox + `rg`). See `internal/worker/runtime/microvm/DESIGN.md`.
