@@ -69,6 +69,7 @@ Flags (serve):
   --mode            all | control | worker
   --socket          unix socket (default <cell-home>/celld.sock); used in mode=all
   --listen-http     TCP listen addr for control and/or worker RPC (e.g. :8080)
+                    requires --worker-token / CELL_WORKER_TOKEN (Agent API auth on TCP)
   --control-url     control plane base URL for mode=worker registration
   --cell-home       base dir (default ~/.cell); sets defaults for other paths
   --state-dir       meta state dir (default <cell-home>/state)

@@ -113,13 +113,18 @@ func (s *Server) ListenAndServe(socketPath string) error {
 }
 
 // ListenAndServeHTTP serves the control API on a TCP address (e.g. ":8080").
+// Agent routes (/v1/cells*, /v1/run) require Bearer auth; refuses to listen
+// when CELL_WORKER_TOKEN / issuer is unset so the Agent API is not open.
 func (s *Server) ListenAndServeHTTP(addr string) error {
+	if s.issuer == nil || !s.issuer.Enabled() {
+		return fmt.Errorf("listen-http requires CELL_WORKER_TOKEN (or --worker-token): Agent API must not be unauthenticated on TCP")
+	}
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
 	}
-	log.Printf("celld listening on http://%s", ln.Addr().String())
-	return http.Serve(ln, s.Handler())
+	log.Printf("celld listening on http://%s (agent API auth required)", ln.Addr().String())
+	return http.Serve(ln, s.HandlerHTTP())
 }
 
 // removeStaleSocket deletes only a dead socket. A live listener is left alone
@@ -306,7 +311,7 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	info, err := s.createCell(r.Context(), req)
+	info, err := s.createCell(r.Context(), req, agentOwnerFingerprint(r))
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -314,14 +319,14 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, info)
 }
 
-func (s *Server) createCell(ctx context.Context, req cellapi.CreateCellRequest) (*cellapi.CellInfo, error) {
+func (s *Server) createCell(ctx context.Context, req cellapi.CreateCellRequest, owner string) (*cellapi.CellInfo, error) {
 	start := time.Now()
-	info, err := s.createCellInner(ctx, req)
+	info, err := s.createCellInner(ctx, req, owner)
 	s.metrics.ObserveCreate(time.Since(start), err)
 	return info, err
 }
 
-func (s *Server) createCellInner(ctx context.Context, req cellapi.CreateCellRequest) (*cellapi.CellInfo, error) {
+func (s *Server) createCellInner(ctx context.Context, req cellapi.CreateCellRequest, owner string) (*cellapi.CellInfo, error) {
 	if req.SnapshotID != "" && !validSnapshotID(req.SnapshotID) {
 		return nil, fmt.Errorf("invalid snapshot_id")
 	}
@@ -334,7 +339,7 @@ func (s *Server) createCellInner(ctx context.Context, req cellapi.CreateCellRequ
 		return nil, err
 	}
 	if req.SnapshotID != "" {
-		if err := s.restoreSnapshot(ctx, worker, cell.ID, req.SnapshotID); err != nil {
+		if err := s.restoreSnapshot(ctx, worker, cell.ID, req.SnapshotID, owner); err != nil {
 			_ = worker.DestroyCell(ctx, cell.ID)
 			return nil, err
 		}
@@ -465,7 +470,7 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	info, err := s.createCell(r.Context(), req.CreateCellRequest)
+	info, err := s.createCell(r.Context(), req.CreateCellRequest, agentOwnerFingerprint(r))
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return

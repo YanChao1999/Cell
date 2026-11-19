@@ -176,7 +176,14 @@ func syncWorkspace(tarB64 string) error {
 		if err != nil {
 			return err
 		}
-		target := filepath.Join("/workspace", filepath.Clean(hdr.Name))
+		name := filepath.Clean(hdr.Name)
+		if name == "." || name == "" {
+			continue
+		}
+		if strings.HasPrefix(name, "..") || filepath.IsAbs(name) {
+			return fmt.Errorf("refusing archive path %q", hdr.Name)
+		}
+		target := filepath.Join("/workspace", name)
 		if target != "/workspace" && !strings.HasPrefix(target, "/workspace/") {
 			return fmt.Errorf("refusing escape %q", hdr.Name)
 		}
@@ -200,6 +207,8 @@ func syncWorkspace(tarB64 string) error {
 			if err := f.Close(); err != nil {
 				return err
 			}
+		case tar.TypeSymlink, tar.TypeLink:
+			return fmt.Errorf("refusing link in archive %q", hdr.Name)
 		}
 	}
 }

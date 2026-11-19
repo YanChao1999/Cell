@@ -50,11 +50,20 @@ if [ "$CODE" != "401" ]; then
   exit 1
 fi
 TOKEN="${CELL_WORKER_TOKEN:-cell-dev-token}"
-curl -sf -H "Authorization: Bearer $TOKEN" http://127.0.0.1:18081/worker/v1/health | grep -q ok
+AUTH=(-H "Authorization: Bearer $TOKEN")
+curl -sf "${AUTH[@]}" http://127.0.0.1:18081/worker/v1/health | grep -q ok
 echo "OK worker RPC auth"
 
+# Agent API on TCP must reject unauthenticated calls.
+CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$CTRL/v1/cells" -H 'Content-Type: application/json' -d '{}' || true)
+if [ "$CODE" != "401" ]; then
+  echo "expected agent API 401 without token, got $CODE" >&2
+  exit 1
+fi
+echo "OK agent API auth"
+
 # Short-lived token mint + metrics endpoint
-ST=$(curl -sf -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+ST=$(curl -sf "${AUTH[@]}" -H 'Content-Type: application/json' \
   -d '{"scope":"worker","ttl":"5m"}' "$CTRL/v1/auth/token")
 SHORT=$(printf '%s' "$ST" | python3 -c 'import sys,json; print(json.load(sys.stdin)["token"])')
 curl -sf -H "Authorization: Bearer $SHORT" http://127.0.0.1:18081/worker/v1/health | grep -q ok
@@ -63,13 +72,12 @@ curl -sf "$CTRL/metrics" | grep -q cell_create_total
 echo "OK metrics"
 
 create_one() {
-  curl -sf "$CTRL/v1/cells" -H 'Content-Type: application/json' -d '{
+  curl -sf "$CTRL/v1/cells" "${AUTH[@]}" -H 'Content-Type: application/json' -d '{
     "environment":"go-1.23",
     "ttl":"5m",
     "prefer_local": false
   }'
 }
-
 A=$(create_one)
 B=$(create_one)
 IDA=$(printf '%s' "$A" | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])')
@@ -84,11 +92,11 @@ else
   echo "OK placed on different workers"
 fi
 
-EXEC=$(curl -sf -X POST "$CTRL/v1/cells/${IDA}/exec" -H 'Content-Type: application/json' -d '{"command":"echo cluster-ok"}')
+EXEC=$(curl -sf -X POST "$CTRL/v1/cells/${IDA}/exec" "${AUTH[@]}" -H 'Content-Type: application/json' -d '{"command":"echo cluster-ok"}')
 printf '%s' "$EXEC" | grep -q cluster-ok
 echo "OK exec on $WA"
 
-curl -sf -X DELETE "$CTRL/v1/cells/${IDA}" -o /dev/null
-curl -sf -X DELETE "$CTRL/v1/cells/${IDB}" -o /dev/null
+curl -sf -X DELETE "$CTRL/v1/cells/${IDA}" "${AUTH[@]}" -o /dev/null
+curl -sf -X DELETE "$CTRL/v1/cells/${IDB}" "${AUTH[@]}" -o /dev/null
 echo "OK destroy"
 echo "cluster smoke passed"

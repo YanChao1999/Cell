@@ -66,6 +66,7 @@ This packs/builds and runs content gates; it does **not** upload. Set `dry_run=f
 
 ## Security notes (from 0.8 review)
 
-- Prefer **OIDC** over long-lived tokens; scope any token to one package.
+- Prefer **OIDC** over long-lived publish tokens; scope any token to one package.
 - Keep `package.json` `files` / hatch `packages` minimal.
-- Adapters talk to an **unauthenticated** Agent API — treat unix socket mode as the default trust boundary; do not advertise open `--listen-http` without a front door auth plan.
+- TCP Agent API requires Bearer (`CELL_WORKER_TOKEN` / short-lived `agent` scope). Unix socket without a token remains local/`0600` trust.
+- Verify release downloads with [release-assets-v0.8.0.sha256](release-assets-v0.8.0.sha256).

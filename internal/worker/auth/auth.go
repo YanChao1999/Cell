@@ -79,6 +79,14 @@ func scopeSet(scopes ...string) map[string]bool {
 	return m
 }
 
+// BearerToken extracts the Bearer credential from a request (empty if absent).
+func BearerToken(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	return bearerToken(r.Header.Get(header))
+}
+
 func bearerToken(v string) string {
 	v = strings.TrimSpace(v)
 	if len(v) < 8 || !strings.EqualFold(v[:7], "bearer ") {

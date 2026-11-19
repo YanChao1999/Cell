@@ -83,6 +83,12 @@ func tarGzDir(root string, w io.Writer) error {
 		if rel == "." {
 			return nil
 		}
+		if strings.HasPrefix(rel, "..") {
+			return fmt.Errorf("workspace archive: refusing path escape %q", rel)
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("workspace archive: refusing symlink %q", rel)
+		}
 		rel = filepath.ToSlash(rel)
 		hdr, err := tar.FileInfoHeader(info, "")
 		if err != nil {
@@ -122,6 +128,10 @@ func untarGzDir(r io.Reader, dest string) error {
 	if err := os.MkdirAll(dest, 0o755); err != nil {
 		return err
 	}
+	destAbs, err := filepath.Abs(dest)
+	if err != nil {
+		return err
+	}
 	gr, err := gzip.NewReader(r)
 	if err != nil {
 		return err
@@ -137,11 +147,14 @@ func untarGzDir(r io.Reader, dest string) error {
 			return err
 		}
 		name := filepath.Clean(hdr.Name)
-		if name == "." || strings.HasPrefix(name, "..") {
+		if name == "." || name == "" {
 			continue
 		}
-		target := filepath.Join(dest, name)
-		if !strings.HasPrefix(target, filepath.Clean(dest)+string(os.PathSeparator)) && target != filepath.Clean(dest) {
+		if strings.HasPrefix(name, "..") || filepath.IsAbs(name) {
+			return fmt.Errorf("workspace archive: refusing archive path %q", hdr.Name)
+		}
+		target := filepath.Join(destAbs, name)
+		if !strings.HasPrefix(target, destAbs+string(os.PathSeparator)) && target != destAbs {
 			return fmt.Errorf("workspace archive: path escapes dest: %s", hdr.Name)
 		}
 		switch hdr.Typeflag {
@@ -153,15 +166,22 @@ func untarGzDir(r io.Reader, dest string) error {
 			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 				return err
 			}
-			f, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(hdr.Mode))
+			f, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(hdr.Mode)&0o755)
 			if err != nil {
 				return err
 			}
 			_, copyErr := io.Copy(f, tr)
-			_ = f.Close()
+			closeErr := f.Close()
 			if copyErr != nil {
 				return copyErr
 			}
+			if closeErr != nil {
+				return closeErr
+			}
+		case tar.TypeSymlink, tar.TypeLink:
+			return fmt.Errorf("workspace archive: refusing link in archive %q", hdr.Name)
+		default:
+			// skip other types
 		}
 	}
 }

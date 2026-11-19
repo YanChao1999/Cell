@@ -18,15 +18,19 @@ export CELL_ENDPOINT=unix://$HOME/.cell/celld.sock
 # From a local clone (preferred while developing)
 dsh plugin add /absolute/path/to/Cell/integrations/dsh-cell
 
-# Or from the v0.8.0 GitHub Release tarball
+# Or from the v0.8.0 GitHub Release tarball (verify checksum)
 # https://github.com/YanChao1999/Cell/releases/tag/v0.8.0
-curl -fsSL -o dsh-plugin-cell.tgz \
+curl -fsSL -o dsh-plugin-cell-0.1.0.tgz \
   https://github.com/YanChao1999/Cell/releases/download/v0.8.0/dsh-plugin-cell-0.1.0.tgz
-mkdir -p /tmp/dsh-plugin-cell && tar -xzf dsh-plugin-cell.tgz -C /tmp/dsh-plugin-cell --strip-components=1
+echo 'a6eaeed53005cdc2663589c502c6600b25b2d31e7172a212d7b72ddaa31c75d2  dsh-plugin-cell-0.1.0.tgz' | sha256sum -c
+mkdir -p /tmp/dsh-plugin-cell && tar -xzf dsh-plugin-cell-0.1.0.tgz -C /tmp/dsh-plugin-cell --strip-components=1
 dsh plugin add /tmp/dsh-plugin-cell
+# Full list: docs/ops/release-assets-v0.8.0.sha256
 
-# npm registry publish (`npm publish` as dsh-plugin-cell) needs `npm login` — not done in CI yet
+# npm registry publish: see docs/ops/PUBLISH.md
 ```
+
+For TCP endpoints set `CELL_AGENT_TOKEN` or `CELL_WORKER_TOKEN` (Bearer). `https://` endpoints use Node `https` (not cleartext `http`).
 
 Optional Cordis config (profile patch):
 

@@ -1,7 +1,9 @@
 package manager
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"os"
 	"path/filepath"
 	"testing"
@@ -58,5 +60,36 @@ func TestUntarReplacesWhenCallerClears(t *testing.T) {
 	got, err := os.ReadFile(filepath.Join(dest, "keep.txt"))
 	if err != nil || string(got) != "new" {
 		t.Fatalf("keep.txt: %v %q", err, got)
+	}
+}
+
+func TestUntarRejectsSymlinkAndTraversal(t *testing.T) {
+	var buf bytes.Buffer
+	gw := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gw)
+	hdr := &tar.Header{Name: "link", Typeflag: tar.TypeSymlink, Linkname: "/etc/passwd", Mode: 0o644}
+	if err := tw.WriteHeader(hdr); err != nil {
+		t.Fatal(err)
+	}
+	_ = tw.Close()
+	_ = gw.Close()
+	if err := untarGzDir(bytes.NewReader(buf.Bytes()), t.TempDir()); err == nil {
+		t.Fatal("expected symlink reject")
+	}
+
+	buf.Reset()
+	gw = gzip.NewWriter(&buf)
+	tw = tar.NewWriter(gw)
+	hdr = &tar.Header{Name: "../escape.txt", Typeflag: tar.TypeReg, Mode: 0o644, Size: 3}
+	if err := tw.WriteHeader(hdr); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write([]byte("bad")); err != nil {
+		t.Fatal(err)
+	}
+	_ = tw.Close()
+	_ = gw.Close()
+	if err := untarGzDir(bytes.NewReader(buf.Bytes()), t.TempDir()); err == nil {
+		t.Fatal("expected traversal reject")
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 
 	cellapi "github.com/YanChao1999/Cell/api"
@@ -25,9 +26,11 @@ func (s *Server) snapshotDir() (string, error) {
 		base = filepath.Join(os.TempDir(), "cell-snapshots")
 	}
 	dir := filepath.Join(base, "snapshots")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	// Owner-only: snapshot tarballs may contain workspace secrets.
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}
+	_ = os.Chmod(dir, 0o700)
 	return dir, nil
 }
 
@@ -63,7 +66,7 @@ func (s *Server) handleSnapshot(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	f, err := os.Create(path)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -76,6 +79,13 @@ func (s *Server) handleSnapshot(w http.ResponseWriter, r *http.Request) {
 	}
 	st, _ := f.Stat()
 	_ = f.Close()
+	_ = os.Chmod(path, 0o600)
+	owner := agentOwnerFingerprint(r)
+	if err := writeSnapshotOwner(dir, snapID, owner); err != nil {
+		_ = os.Remove(path)
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	var size int64
 	if st != nil {
 		size = st.Size()
@@ -88,7 +98,7 @@ func (s *Server) handleSnapshot(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) restoreSnapshot(ctx context.Context, worker workerapi.Worker, cellID, snapshotID string) error {
+func (s *Server) restoreSnapshot(ctx context.Context, worker workerapi.Worker, cellID, snapshotID, owner string) error {
 	if snapshotID == "" {
 		return nil
 	}
@@ -98,6 +108,9 @@ func (s *Server) restoreSnapshot(ctx context.Context, worker workerapi.Worker, c
 	}
 	dir, err := s.snapshotDir()
 	if err != nil {
+		return err
+	}
+	if err := checkSnapshotOwner(dir, snapshotID, owner); err != nil {
 		return err
 	}
 	path, err := snapshotPath(dir, snapshotID)
@@ -110,6 +123,53 @@ func (s *Server) restoreSnapshot(ctx context.Context, worker workerapi.Worker, c
 	}
 	defer func() { _ = f.Close() }()
 	return arch.UnpackWorkspace(ctx, cellID, f)
+}
+
+func snapshotOwnerPath(dir, snapshotID string) (string, error) {
+	if !validSnapshotID(snapshotID) {
+		return "", fmt.Errorf("invalid snapshot_id")
+	}
+	cleanDir := filepath.Clean(dir)
+	path := filepath.Join(cleanDir, snapshotID+".owner")
+	if filepath.Dir(path) != cleanDir {
+		return "", fmt.Errorf("invalid snapshot_id")
+	}
+	return path, nil
+}
+
+func writeSnapshotOwner(dir, snapshotID, owner string) error {
+	path, err := snapshotOwnerPath(dir, snapshotID)
+	if err != nil {
+		return err
+	}
+	owner = strings.TrimSpace(owner)
+	if owner == "" {
+		owner = "anonymous"
+	}
+	return os.WriteFile(path, []byte(owner+"\n"), 0o600)
+}
+
+func checkSnapshotOwner(dir, snapshotID, owner string) error {
+	path, err := snapshotOwnerPath(dir, snapshotID)
+	if err != nil {
+		return err
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("snapshot %s: missing owner metadata (refusing restore)", snapshotID)
+		}
+		return err
+	}
+	want := strings.TrimSpace(string(raw))
+	got := strings.TrimSpace(owner)
+	if got == "" {
+		got = "anonymous"
+	}
+	if want != got {
+		return fmt.Errorf("snapshot %s: access denied", snapshotID)
+	}
+	return nil
 }
 
 func snapshotPath(dir, snapshotID string) (string, error) {

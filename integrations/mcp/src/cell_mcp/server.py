@@ -31,13 +31,25 @@ def _parse_endpoint(endpoint: str) -> tuple[str | None, str]:
     raise ValueError(f"Unsupported CELL_ENDPOINT: {endpoint!r}")
 
 
+def _auth_headers() -> dict[str, str]:
+    token = (os.environ.get("CELL_AGENT_TOKEN") or os.environ.get("CELL_WORKER_TOKEN") or "").strip()
+    if not token:
+        return {}
+    return {"Authorization": f"Bearer {token}"}
+
+
 def _client() -> httpx.Client:
     endpoint = os.environ.get("CELL_ENDPOINT") or _default_endpoint()
     uds, base = _parse_endpoint(endpoint)
+    # Bound hangs; operators can still raise via httpx defaults if needed.
+    timeout = httpx.Timeout(600.0, connect=10.0)
+    headers = _auth_headers()
     if uds:
         transport = httpx.HTTPTransport(uds=uds)
-        return httpx.Client(transport=transport, base_url=base, timeout=None)
-    return httpx.Client(base_url=base, timeout=None)
+        return httpx.Client(
+            transport=transport, base_url=base, timeout=timeout, headers=headers
+        )
+    return httpx.Client(base_url=base, timeout=timeout, headers=headers)
 
 
 def _request(method: str, path: str, **kwargs: Any) -> Any:

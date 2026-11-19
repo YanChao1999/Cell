@@ -138,6 +138,7 @@ class Client:
         self,
         endpoint: str | None = None,
         *,
+        token: str | None = None,
         timeout: float | httpx.Timeout | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
@@ -145,6 +146,12 @@ class Client:
         uds, base_url = _parse_endpoint(endpoint)
         self._endpoint = endpoint
         self._base_url = base_url
+        tok = (token if token is not None else (
+            os.environ.get("CELL_AGENT_TOKEN") or os.environ.get("CELL_WORKER_TOKEN") or ""
+        )).strip()
+        self._headers: dict[str, str] = {}
+        if tok:
+            self._headers["Authorization"] = f"Bearer {tok}"
         if timeout is None:
             self._timeout: httpx.Timeout | float = _default_timeout()
         elif isinstance(timeout, (int, float)):
@@ -185,6 +192,7 @@ class Client:
             kwargs: dict[str, Any] = {
                 "base_url": self._base_url,
                 "timeout": self._timeout,
+                "headers": self._headers,
             }
             if self._transport is not None:
                 kwargs["transport"] = self._transport
