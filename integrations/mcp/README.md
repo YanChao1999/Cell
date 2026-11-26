@@ -2,7 +2,7 @@
 
 Thin [Model Context Protocol](https://modelcontextprotocol.io/) server over a running `celld`.
 
-Tools: `cell_create`, `cell_exec`, `cell_snapshot`, `cell_kill`, `cell_list`.
+Tools: `cell_create`, `cell_exec`, `cell_read`, `cell_write`, `cell_ls`, `cell_snapshot`, `cell_kill`, `cell_list`.
 
 ## Install
 

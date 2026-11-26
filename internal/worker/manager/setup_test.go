@@ -72,6 +72,10 @@ name: t1
 setup:
   - echo one
   - echo two
+default_limits:
+  cpu: "1"
+  memory: 512Mi
+  disk: 1Gi
 default_exec_timeout: 1m
 `)
 	rt := &fakeRT{}
@@ -109,6 +113,10 @@ name: t1
 setup:
   - echo ok
   - echo fail
+default_limits:
+  cpu: "1"
+  memory: 512Mi
+  disk: 1Gi
 `)
 	rt := &fakeRT{failCmd: "echo fail", failExit: 7}
 	w, err := New(Options{
@@ -145,7 +153,13 @@ func TestCreateNoSetup(t *testing.T) {
 	root := t.TempDir()
 	envDir := filepath.Join(root, "envs")
 	_ = os.MkdirAll(envDir, 0o755)
-	writeEnv(t, envDir, "bare", "name: bare\n")
+	writeEnv(t, envDir, "bare", `
+name: bare
+default_limits:
+  cpu: "1"
+  memory: 512Mi
+  disk: 1Gi
+`)
 	rt := &fakeRT{}
 	w, err := New(Options{
 		WorkspacesRoot: filepath.Join(root, "ws"),
@@ -165,6 +179,27 @@ func TestCreateNoSetup(t *testing.T) {
 	}
 }
 
+func TestCreateRequiresLimits(t *testing.T) {
+	root := t.TempDir()
+	envDir := filepath.Join(root, "envs")
+	_ = os.MkdirAll(envDir, 0o755)
+	writeEnv(t, envDir, "nolim", "name: nolim\nimage: alpine:3\n")
+	w, err := New(Options{
+		WorkspacesRoot: filepath.Join(root, "ws"),
+		CacheDir:       filepath.Join(root, "cache"),
+		Runtime:        &fakeRT{},
+		Source:         git.NewStub(),
+		EnvLoader:      envtemplate.New(envDir),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = w.CreateCell(context.Background(), api.CreateCellRequest{Environment: "nolim"})
+	if err == nil || !strings.Contains(err.Error(), "default_limits") {
+		t.Fatalf("expected default_limits error, got %v", err)
+	}
+}
+
 func TestCreateSetupConditionals(t *testing.T) {
 	root := t.TempDir()
 	envDir := filepath.Join(root, "envs")
@@ -181,6 +216,10 @@ setup:
     unless: false
   - run: echo unless-skip
     unless: true
+default_limits:
+  cpu: "1"
+  memory: 512Mi
+  disk: 1Gi
 `)
 	rt := &fakeRT{}
 	w, err := New(Options{

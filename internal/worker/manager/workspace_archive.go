@@ -30,23 +30,39 @@ func (lw *LocalWorker) PackWorkspace(ctx context.Context, cellID string, w io.Wr
 
 // UnpackWorkspace replaces the Cell host workspace with a gzip tar.
 // Existing contents are wiped first so restore does not merge leftovers.
+// The workspace directory inode is kept (clear children only) so Docker
+// bind-mounts of /workspace stay valid after import.
 // When the runtime supports it (microVM), the guest workspace is re-synced.
 func (lw *LocalWorker) UnpackWorkspace(ctx context.Context, cellID string, r io.Reader) error {
 	cell, err := lw.getCell(cellID)
 	if err != nil {
 		return err
 	}
-	if err := os.RemoveAll(cell.Workspace); err != nil {
+	if err := clearDirContents(cell.Workspace); err != nil {
 		return fmt.Errorf("workspace archive: clear %s: %w", cell.Workspace, err)
-	}
-	if err := os.MkdirAll(cell.Workspace, 0o755); err != nil {
-		return err
 	}
 	if err := untarGzDir(r, cell.Workspace); err != nil {
 		return err
 	}
 	if rs, ok := lw.rt.(workspaceResyncer); ok {
 		return rs.ResyncWorkspace(ctx, cellID, cell.Workspace)
+	}
+	return nil
+}
+
+// clearDirContents removes all entries under dir but keeps dir itself.
+func clearDirContents(dir string) error {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if err := os.RemoveAll(filepath.Join(dir, e.Name())); err != nil {
+			return err
+		}
 	}
 	return nil
 }

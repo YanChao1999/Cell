@@ -6,6 +6,15 @@ All notable changes to Cell are documented here. Versioning follows semver-ish `
 
 ### Added
 - CI: `publish-packages.yml` for `dsh-plugin-cell` (npm) + `cell-mcp` (PyPI); Dependabot for those trees; [docs/ops/PUBLISH.md](docs/ops/PUBLISH.md)
+- MCP: `cell_read` / `cell_write` / `cell_ls`; `cell_get` / `cell_wait`; `cell_sync` (local dirty-tree upload); async create (`background`/`wait`)
+- Create: `async` + live status (`creating`/`fetching`/`starting`/`setup`/`ready`/`error`) with `timings` (`fetch_ms` / `runtime_ms` / `setup_ms`)
+- Agent API: `PUT /v1/cells/{id}/workspace` to import a local tree (gzip tar)
+- Environments: `cpp.yaml`; [docs/custom-images.md](docs/custom-images.md) (custom images, mix vs split, required limits)
+- Git source: skip mirror `fetch` when fresh (`CELL_GIT_MIRROR_MAX_AGE`, default 5m); log `mirror=cache|fetch|clone` timings
+- Metrics/Grafana: one-page insight dashboard (gauges → what to fix); phase + cache reuse; per-worker CPU/mem/disk via heartbeats (`cell_worker_*`)
+
+### Changed
+- Environment templates must set `default_limits.cpu` / `memory` / `disk` (fail closed; overridable per create)
 
 ### Security
 - TCP `--listen-http` refuses to start without `CELL_WORKER_TOKEN`; Agent routes require Bearer (`worker`/`agent`)

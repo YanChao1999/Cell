@@ -129,6 +129,9 @@ func New(opts Options) (*LocalWorker, error) {
 
 func (w *LocalWorker) ID() string { return w.id }
 
+// WorkspacesRoot is the host directory for Cell workspaces (disk monitoring).
+func (w *LocalWorker) WorkspacesRoot() string { return w.workspaces }
+
 // CacheLayout returns the durable cache layout (for worker RPC export).
 func (w *LocalWorker) CacheLayout() *cache.Layout { return w.cache }
 
@@ -150,6 +153,8 @@ func (w *LocalWorker) CacheIndex() workerapi.CacheIndex { return w.cacheIndex }
 
 // CreateCell allocates an id, prepares workspace from source, resolves the
 // environment template, then calls Runtime.Create.
+// When req.Async is true, returns immediately with status=creating and finishes
+// in the background (poll via GetCell).
 func (w *LocalWorker) CreateCell(ctx context.Context, req api.CreateCellRequest) (*workerapi.Cell, error) {
 	w.mu.Lock()
 	if len(w.cells) >= w.maxCells {
@@ -176,15 +181,62 @@ func (w *LocalWorker) CreateCell(ctx context.Context, req api.CreateCellRequest)
 		return nil, err
 	}
 
+	if req.Async {
+		go func() {
+			bg := context.WithoutCancel(ctx)
+			if err := w.finishCreate(bg, cell, req); err != nil {
+				w.mu.Lock()
+				cell.Status = "error"
+				cell.Error = err.Error()
+				w.mu.Unlock()
+				log.Printf("worker %s: async create %s failed: %v", w.id, id, err)
+			}
+		}()
+		return cell, nil
+	}
+
+	if err := w.finishCreate(ctx, cell, req); err != nil {
+		return nil, err
+	}
+	return cell, nil
+}
+
+// GetCell returns a live Cell by id (copy of current status/timings).
+func (w *LocalWorker) GetCell(_ context.Context, cellID string) (*workerapi.Cell, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	c := w.cells[cellID]
+	if c == nil {
+		return nil, fmt.Errorf("worker: cell %s not found", cellID)
+	}
+	cp := *c
+	if c.Timings != nil {
+		t := *c.Timings
+		cp.Timings = &t
+	}
+	return &cp, nil
+}
+
+func (w *LocalWorker) finishCreate(ctx context.Context, cell *workerapi.Cell, req api.CreateCellRequest) error {
+	start := time.Now()
+	id := cell.ID
+	ws := cell.Workspace
+	timings := &api.CreateTimings{}
+
 	// Snapshot restore replaces the workspace after Create; skip fetch/setup
 	// so template steps do not mutate state that will be wiped.
 	fromSnapshot := req.SnapshotID != ""
 	if !fromSnapshot {
-		if err := w.source.Fetch(ctx, req.Repo, req.Ref, ws); err != nil {
+		w.setCellStatus(cell, "fetching")
+		t0 := time.Now()
+		fs, err := w.source.Fetch(ctx, req.Repo, req.Ref, ws)
+		if err != nil {
 			_ = os.RemoveAll(ws)
 			w.removeCell(id)
-			return nil, err
+			return err
 		}
+		timings.FetchMS = time.Since(t0).Milliseconds()
+		timings.Mirror = fs.Mirror
 	}
 
 	image, limits, envVars, mounts, network, egressAllow, setup, err := w.resolveEnv(req)
@@ -192,10 +244,13 @@ func (w *LocalWorker) CreateCell(ctx context.Context, req api.CreateCellRequest)
 		_ = w.source.Release(ctx, ws)
 		_ = os.RemoveAll(ws)
 		w.removeCell(id)
-		return nil, err
+		return err
 	}
 
-	w.pullColdCaches(ctx, mounts)
+	hit, miss, pull := w.pullColdCaches(ctx, mounts)
+	timings.CacheHit = hit
+	timings.CacheMiss = miss
+	timings.CachePull = pull
 
 	for _, m := range mounts {
 		w.cacheIndex.Add(m.HostKey)
@@ -221,47 +276,59 @@ func (w *LocalWorker) CreateCell(ctx context.Context, req api.CreateCellRequest)
 			_ = w.source.Release(ctx, ws)
 			_ = os.RemoveAll(ws)
 			w.removeCell(id)
-			return nil, err
+			return err
 		}
 		createOpts.CacheMounts = cellMounts
 	}
 
+	w.setCellStatus(cell, "starting")
+	tRT := time.Now()
 	if err := w.rt.Create(ctx, createOpts); err != nil {
 		_ = w.source.Release(ctx, ws)
 		_ = os.RemoveAll(ws)
 		w.removeCell(id)
-		return nil, err
+		return err
 	}
+	timings.RuntimeMS = time.Since(tRT).Milliseconds()
 
 	w.mu.Lock()
 	cell.DiskLimit = limits.Disk
 	w.mu.Unlock()
 
 	if !fromSnapshot && len(setup) > 0 {
-		w.mu.Lock()
-		cell.Status = "setup"
-		w.mu.Unlock()
+		w.setCellStatus(cell, "setup")
+		tSetup := time.Now()
 		setupTimeout := w.setupTimeoutSeconds(req.Environment)
 		if err := w.runSetup(ctx, id, ws, setup, setupTimeout); err != nil {
 			_ = w.rt.Destroy(ctx, id)
 			_ = w.source.Release(ctx, ws)
 			_ = os.RemoveAll(ws)
 			w.removeCell(id)
-			return nil, err
+			return err
 		}
 		if err := checkWorkspaceDisk(ws, limits.Disk); err != nil {
 			_ = w.rt.Destroy(ctx, id)
 			_ = w.source.Release(ctx, ws)
 			_ = os.RemoveAll(ws)
 			w.removeCell(id)
-			return nil, err
+			return err
 		}
+		timings.SetupMS = time.Since(tSetup).Milliseconds()
 	}
 
+	timings.TotalMS = time.Since(start).Milliseconds()
 	w.mu.Lock()
+	cell.Timings = timings
 	cell.Status = "ready"
+	cell.Error = ""
 	w.mu.Unlock()
-	return cell, nil
+	return nil
+}
+
+func (w *LocalWorker) setCellStatus(cell *workerapi.Cell, status string) {
+	w.mu.Lock()
+	cell.Status = status
+	w.mu.Unlock()
 }
 
 func (w *LocalWorker) runSetup(ctx context.Context, cellID, workspace string, steps []envtemplate.SetupStep, timeoutSeconds int) error {
@@ -361,6 +428,13 @@ func (w *LocalWorker) resolveEnv(req api.CreateCellRequest) (
 	}
 	if limits.Disk == "" {
 		limits.Disk = tmpl.DefaultLimits.Disk
+	}
+	// Custom and stock images must declare hard caps — refuse unlimited Cells.
+	if limits.CPU == "" || limits.Memory == "" || limits.Disk == "" {
+		return "", limits, nil, nil, "", nil, nil, fmt.Errorf(
+			"manager: environment %q missing default_limits (cpu/memory/disk required; override via create limits)",
+			req.Environment,
+		)
 	}
 	if len(tmpl.CacheMounts) > 0 && w.cache != nil {
 		keys := make([]string, len(tmpl.CacheMounts))
@@ -471,9 +545,10 @@ func (w *LocalWorker) DestroyCell(ctx context.Context, cellID string) error {
 }
 
 // pullColdCaches best-effort replicates warm peer caches for cold local keys.
-func (w *LocalWorker) pullColdCaches(ctx context.Context, mounts []cache.Mount) {
-	if w.peers == nil || w.cache == nil || len(mounts) == 0 {
-		return
+// Returns durable-cache hit / miss / peer-pull counts for metrics (shared cache reuse).
+func (w *LocalWorker) pullColdCaches(ctx context.Context, mounts []cache.Mount) (hit, miss, pull int) {
+	if len(mounts) == 0 {
+		return 0, 0, 0
 	}
 	seen := make(map[string]struct{})
 	for _, m := range mounts {
@@ -486,6 +561,11 @@ func (w *LocalWorker) pullColdCaches(ctx context.Context, mounts []cache.Mount) 
 		}
 		seen[key] = struct{}{}
 		if cache.DirIsWarm(m.HostAbs) {
+			hit++
+			continue
+		}
+		miss++
+		if w.peers == nil || w.cache == nil {
 			continue
 		}
 		ep, err := w.peers.EndpointForCache(ctx, key, w.id)
@@ -507,7 +587,9 @@ func (w *LocalWorker) pullColdCaches(ctx context.Context, mounts []cache.Mount) 
 		}
 		log.Printf("manager: pulled cache %s from %s", key, ep)
 		w.cacheIndex.Add(key)
+		pull++
 	}
+	return hit, miss, pull
 }
 
 func (w *LocalWorker) removeCell(id string) {

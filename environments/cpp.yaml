@@ -1,0 +1,34 @@
+name: cpp
+description: C/C++ toolchain on Debian Bookworm (cmake, ninja, g++, ccache)
+
+# Stock image is enough for most agent builds. Pin a digest in production.
+# For Yocto/OE or cross-toolchains, use a separate environment (see embedded-linux)
+# — do not merge toolchains into one mega-image.
+image: gcc:14-bookworm
+
+cache_mounts:
+  - host: ccache
+    container: /root/.ccache
+  - host: cmake-build
+    container: /opt/cell/cmake-build
+
+setup:
+  - g++ --version
+  - cmake --version || apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq cmake ninja-build pkg-config
+  - ccache --version || apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ccache
+
+env:
+  CCACHE_DIR: /root/.ccache
+  CMAKE_BUILD_PARALLEL_LEVEL: "2"
+  CC: gcc
+  CXX: g++
+
+# Required: cpu / memory / disk. Override per-create via API limits.
+default_limits:
+  cpu: "4"
+  memory: 8Gi
+  disk: 20Gi
+
+default_exec_timeout: 1h
+
+network: default

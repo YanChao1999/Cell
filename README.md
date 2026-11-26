@@ -6,7 +6,7 @@
 
 A **Cell** is a disposable execution workspace: checkout code, install deps, build/test, snapshot, destroy — while reusable caches survive. You run the control plane; data stays on your hosts.
 
-**Start here:** [docs/quickstart.md](docs/quickstart.md) · Support: [docs/ops/SUPPORT.md](docs/ops/SUPPORT.md)
+**Start here:** [docs/quickstart.md](docs/quickstart.md) · Support: [docs/ops/SUPPORT.md](docs/ops/SUPPORT.md) · Custom images / limits: [docs/custom-images.md](docs/custom-images.md)
 
 | Path | Command |
 |------|---------|
@@ -117,7 +117,7 @@ On start, celld ensures well-known dirs under `--cache-dir`:
 
 `go-mod`, `go-build`, `pip-cache`, `python-venv`, `zephyr-modules`, `west-cache`, `yocto-downloads`, `yocto-sstate`, `ccache`
 
-Env templates declare mounts (see `environments/`).
+Env templates declare mounts and **required** `default_limits` (cpu/memory/disk); see `environments/` and [docs/custom-images.md](docs/custom-images.md).
 
 ## TTL reaper
 
