@@ -14,7 +14,7 @@ body:
     attributes:
       label: Cell version / commit
       description: Release tag (e.g. v0.8.0) or `git rev-parse --short HEAD`.
-      placeholder: "0.8.1-dev / abc1234"
+      placeholder: "0.8.1 / abc1234"
     validations:
       required: true
   - type: dropdown

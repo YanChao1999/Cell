@@ -4,6 +4,8 @@ All notable changes to Cell are documented here. Versioning follows semver-ish `
 
 ## [Unreleased]
 
+## [0.8.1] — 2026-11-26
+
 ### Added
 - CI: `publish-packages.yml` for `dsh-plugin-cell` (npm) + `cell-mcp` (PyPI); Dependabot for those trees; [docs/ops/PUBLISH.md](docs/ops/PUBLISH.md)
 - MCP: `cell_read` / `cell_write` / `cell_ls`; `cell_get` / `cell_wait`; `cell_sync` (local dirty-tree upload); async create (`background`/`wait`)
@@ -12,6 +14,7 @@ All notable changes to Cell are documented here. Versioning follows semver-ish `
 - Environments: `cpp.yaml`; [docs/custom-images.md](docs/custom-images.md) (custom images, mix vs split, required limits)
 - Git source: skip mirror `fetch` when fresh (`CELL_GIT_MIRROR_MAX_AGE`, default 5m); log `mirror=cache|fetch|clone` timings
 - Metrics/Grafana: one-page insight dashboard (gauges → what to fix); phase + cache reuse; per-worker CPU/mem/disk via heartbeats (`cell_worker_*`)
+- Community: CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, issue/PR templates; `make build` / `make test` / `make celld microvm`
 
 ### Changed
 - Environment templates must set `default_limits.cpu` / `memory` / `disk` (fail closed; overridable per create)
