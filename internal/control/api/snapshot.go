@@ -125,16 +125,20 @@ func (s *Server) restoreSnapshot(ctx context.Context, worker workerapi.Worker, c
 	return arch.UnpackWorkspace(ctx, cellID, f)
 }
 
-func snapshotOwnerPath(dir, snapshotID string) (string, error) {
+func snapshotFilePath(dir, snapshotID, ext string) (string, error) {
 	if !validSnapshotID(snapshotID) {
 		return "", fmt.Errorf("invalid snapshot_id")
 	}
 	cleanDir := filepath.Clean(dir)
-	path := filepath.Join(cleanDir, snapshotID+".owner")
+	path := filepath.Join(cleanDir, snapshotID+ext)
 	if filepath.Dir(path) != cleanDir {
 		return "", fmt.Errorf("invalid snapshot_id")
 	}
 	return path, nil
+}
+
+func snapshotOwnerPath(dir, snapshotID string) (string, error) {
+	return snapshotFilePath(dir, snapshotID, ".owner")
 }
 
 func writeSnapshotOwner(dir, snapshotID, owner string) error {
@@ -173,15 +177,7 @@ func checkSnapshotOwner(dir, snapshotID, owner string) error {
 }
 
 func snapshotPath(dir, snapshotID string) (string, error) {
-	if !validSnapshotID(snapshotID) {
-		return "", fmt.Errorf("invalid snapshot_id")
-	}
-	cleanDir := filepath.Clean(dir)
-	path := filepath.Join(cleanDir, snapshotID+".tar.gz")
-	if filepath.Dir(path) != cleanDir {
-		return "", fmt.Errorf("invalid snapshot_id")
-	}
-	return path, nil
+	return snapshotFilePath(dir, snapshotID, ".tar.gz")
 }
 
 func validSnapshotID(id string) bool {

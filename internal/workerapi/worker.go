@@ -30,12 +30,12 @@ type CacheIndex interface {
 
 // Cell is a running disposable environment on a worker.
 type Cell struct {
-	ID          string            `json:"id"`
-	Workspace   string            `json:"workspace,omitempty"`
-	Environment string            `json:"environment"`
-	Status      string            `json:"status"`
-	DiskLimit   string            `json:"disk_limit,omitempty"` // template/request disk cap
-	Error       string            `json:"error,omitempty"`
+	ID          string             `json:"id"`
+	Workspace   string             `json:"workspace,omitempty"`
+	Environment string             `json:"environment"`
+	Status      string             `json:"status"`
+	DiskLimit   string             `json:"disk_limit,omitempty"` // template/request disk cap
+	Error       string             `json:"error,omitempty"`
 	Timings     *api.CreateTimings `json:"timings,omitempty"`
 }
 

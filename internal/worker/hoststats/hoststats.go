@@ -13,11 +13,11 @@ import (
 
 // Sample is a point-in-time host resource snapshot.
 type Sample struct {
-	CPURatio      float64 `json:"cpu_ratio"` // 0..1 over recent interval
-	MemUsedBytes  uint64  `json:"mem_used_bytes"`
-	MemTotalBytes uint64  `json:"mem_total_bytes"`
-	DiskUsedBytes uint64  `json:"disk_used_bytes"`
-	DiskTotalBytes uint64 `json:"disk_total_bytes"`
+	CPURatio       float64 `json:"cpu_ratio"` // 0..1 over recent interval
+	MemUsedBytes   uint64  `json:"mem_used_bytes"`
+	MemTotalBytes  uint64  `json:"mem_total_bytes"`
+	DiskUsedBytes  uint64  `json:"disk_used_bytes"`
+	DiskTotalBytes uint64  `json:"disk_total_bytes"`
 }
 
 var (

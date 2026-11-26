@@ -87,14 +87,16 @@ func (p *Provider) Fetch(ctx context.Context, repo, ref, dest string) (FetchStat
 	var mirror string
 	var mirrorAction string
 	var mirrorDur time.Duration
-	err := withMirrorLock(filepath.Join(p.ReposRoot, repoHash(repo)), func() error {
-		t0 := time.Now()
-		var e error
-		mirror, mirrorAction, e = p.ensureMirror(ctx, repo, false /* forceFetch */)
-		mirrorDur = time.Since(t0)
-		return e
-	})
-	if err != nil {
+	lockEnsure := func(force bool) error {
+		return withMirrorLock(filepath.Join(p.ReposRoot, repoHash(repo)), func() error {
+			t0 := time.Now()
+			var e error
+			mirror, mirrorAction, e = p.ensureMirror(ctx, repo, force)
+			mirrorDur += time.Since(t0)
+			return e
+		})
+	}
+	if err := lockEnsure(false); err != nil {
 		return FetchStats{}, err
 	}
 
@@ -103,19 +105,12 @@ func (p *Provider) Fetch(ctx context.Context, repo, ref, dest string) (FetchStat
 	}
 
 	tWT := time.Now()
-	err = worktreeAdd(ctx, mirror, dest, ref)
+	err := worktreeAdd(ctx, mirror, dest, ref)
 	wtDur := time.Since(tWT)
 	if err != nil {
 		// Ref may be missing from a stale mirror — force fetch once and retry.
 		log.Printf("source/git: worktree miss for %s@%s; forcing mirror fetch", repo, ref)
-		err = withMirrorLock(filepath.Join(p.ReposRoot, repoHash(repo)), func() error {
-			t0 := time.Now()
-			var e error
-			mirror, mirrorAction, e = p.ensureMirror(ctx, repo, true /* forceFetch */)
-			mirrorDur += time.Since(t0)
-			return e
-		})
-		if err != nil {
+		if err := lockEnsure(true); err != nil {
 			return FetchStats{}, err
 		}
 		tWT = time.Now()

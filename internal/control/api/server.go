@@ -209,6 +209,19 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	s.metrics.Handler().ServeHTTP(w, r)
 }
 
+func workerHostFromInfo(info registry.Info) metrics.WorkerHost {
+	return metrics.WorkerHost{
+		ID:             info.ID,
+		CPURatio:       info.Host.CPURatio,
+		MemUsedBytes:   info.Host.MemUsedBytes,
+		MemTotalBytes:  info.Host.MemTotalBytes,
+		DiskUsedBytes:  info.Host.DiskUsedBytes,
+		DiskTotalBytes: info.Host.DiskTotalBytes,
+		CellsUsed:      info.UsedCells,
+		CellsMax:       info.MaxCells,
+	}
+}
+
 func (s *Server) syncWorkerMetrics() {
 	if s.registry == nil || s.metrics == nil {
 		return
@@ -216,16 +229,7 @@ func (s *Server) syncWorkerMetrics() {
 	list := s.registry.List()
 	samples := make([]metrics.WorkerHost, 0, len(list))
 	for _, info := range list {
-		samples = append(samples, metrics.WorkerHost{
-			ID:             info.ID,
-			CPURatio:       info.Host.CPURatio,
-			MemUsedBytes:   info.Host.MemUsedBytes,
-			MemTotalBytes:  info.Host.MemTotalBytes,
-			DiskUsedBytes:  info.Host.DiskUsedBytes,
-			DiskTotalBytes: info.Host.DiskTotalBytes,
-			CellsUsed:      info.UsedCells,
-			CellsMax:       info.MaxCells,
-		})
+		samples = append(samples, workerHostFromInfo(info))
 	}
 	s.metrics.SyncWorkers(samples)
 }
@@ -253,12 +257,7 @@ func (s *Server) handleWorkerRegister(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	s.metrics.ObserveWorker(metrics.WorkerHost{
-		ID: info.ID, CPURatio: info.Host.CPURatio,
-		MemUsedBytes: info.Host.MemUsedBytes, MemTotalBytes: info.Host.MemTotalBytes,
-		DiskUsedBytes: info.Host.DiskUsedBytes, DiskTotalBytes: info.Host.DiskTotalBytes,
-		CellsUsed: info.UsedCells, CellsMax: info.MaxCells,
-	})
+	s.metrics.ObserveWorker(workerHostFromInfo(*info))
 	writeJSON(w, http.StatusCreated, info)
 }
 
@@ -283,12 +282,7 @@ func (s *Server) handleWorkerHeartbeat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.syncRemoteWorker(info)
-	s.metrics.ObserveWorker(metrics.WorkerHost{
-		ID: info.ID, CPURatio: info.Host.CPURatio,
-		MemUsedBytes: info.Host.MemUsedBytes, MemTotalBytes: info.Host.MemTotalBytes,
-		DiskUsedBytes: info.Host.DiskUsedBytes, DiskTotalBytes: info.Host.DiskTotalBytes,
-		CellsUsed: info.UsedCells, CellsMax: info.MaxCells,
-	})
+	s.metrics.ObserveWorker(workerHostFromInfo(*info))
 	writeJSON(w, http.StatusOK, info)
 }
 
