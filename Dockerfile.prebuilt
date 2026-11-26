@@ -1,0 +1,12 @@
+# Runtime image that packs host-built binaries (avoids in-Docker module fetch).
+# Build:
+#   GOTOOLCHAIN=auto go build -o bin/celld ./cmd/celld && ...
+#   docker compose -f docker-compose.yml -f docker-compose.prebuilt.yml up --build -d
+FROM public.ecr.aws/docker/library/golang:1.26-bookworm@sha256:5de7c99eb78ca5e515a4c340235d0955ec5964a5071c492c15503d7c267da473
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+COPY bin/celld bin/cell bin/cell-egress /usr/local/bin/
+COPY environments /app/environments
+# Compose sets CELL_RUNTIME=docker on workers; leave unset here.
+WORKDIR /data
+ENTRYPOINT ["celld"]

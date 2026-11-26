@@ -1,0 +1,14 @@
+# Override: use host-built binaries (Dockerfile.prebuilt) instead of compiling in Docker.
+services:
+  control:
+    build:
+      context: .
+      dockerfile: Dockerfile.prebuilt
+  worker-a:
+    build:
+      context: .
+      dockerfile: Dockerfile.prebuilt
+  worker-b:
+    build:
+      context: .
+      dockerfile: Dockerfile.prebuilt

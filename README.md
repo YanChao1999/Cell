@@ -126,9 +126,14 @@ Default Cell TTL is **30m** (override with create `ttl`). The reaper ticks on st
 ## Cluster / observability
 
 ```bash
-docker compose up --build -d
+# One-liners (see Makefile):
+make celld up              # host-build binaries + Docker-runtime compose cluster
+make celld local-cluster   # alias for up
+make celld obs             # Prometheus + Grafana
+make celld status          # health + workers
+make celld mcp-install     # cell-mcp for Cursor (.cursor/mcp.json)
 ./scripts/cluster-smoke.sh
-# Optional Grafana/Prometheus: docker-compose.obs.yml
+# Grafana http://127.0.0.1:13000 (admin/cell) · metrics UI http://127.0.0.1:18080/metrics/ui
 ```
 
 ## Ops & security

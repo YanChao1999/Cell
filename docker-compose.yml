@@ -1,18 +1,20 @@
-# Mini Cell cluster for Phase 5 smoke (Linux host networking).
+# Mini Cell cluster (Linux host networking + Docker runtime for Cells).
 # Bridge DNS was unreliable here ("lookup control: server misbehaving"), so all
 # services share the host network and use distinct ports.
 #
+# Workers mount docker.sock and use identical host↔container paths under
+# /tmp/cell-cluster/* so sibling Cell containers can bind-mount workspaces
+# (Docker interprets -v paths on the host, not inside the worker).
+#
 # Usage:
-#   # free :18080 if a leftover host celld is bound there
-#   docker compose down
-#   docker compose up --build -d
+#   make celld up
+#   make celld obs
 #   ./scripts/cluster-smoke.sh
-#   docker compose down -v
 
 name: cell
 
 x-worker-env: &worker-env
-  CELL_RUNTIME: host
+  CELL_RUNTIME: docker
   CELL_ADVERTISE_HOST: 127.0.0.1
   CELL_WORKER_TOKEN: cell-dev-token
 
@@ -26,14 +28,16 @@ services:
       - serve
       - --mode=control
       - --listen-http=127.0.0.1:18080
-      - --cell-home=/data
+      - --cell-home=/tmp/cell-cluster/control
       - --worker-id=control
     volumes:
-      - control-data:/data
+      - /tmp/cell-cluster/control:/tmp/cell-cluster/control
 
   worker-a:
     build: .
     network_mode: host
+    group_add:
+      - "983" # host docker GID — getent group docker
     environment:
       <<: *worker-env
     command:
@@ -42,16 +46,20 @@ services:
       - --worker-id=worker-a
       - --listen-http=127.0.0.1:18081
       - --control-url=http://127.0.0.1:18080
-      - --cell-home=/data
+      - --cell-home=/tmp/cell-cluster/worker-a
       - --environments=/app/environments
     volumes:
-      - worker-a-data:/data
+      - /tmp/cell-cluster/worker-a:/tmp/cell-cluster/worker-a
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /usr/bin/docker:/usr/bin/docker:ro
     depends_on:
       - control
 
   worker-b:
     build: .
     network_mode: host
+    group_add:
+      - "983"
     environment:
       <<: *worker-env
     command:
@@ -60,14 +68,11 @@ services:
       - --worker-id=worker-b
       - --listen-http=127.0.0.1:18082
       - --control-url=http://127.0.0.1:18080
-      - --cell-home=/data
+      - --cell-home=/tmp/cell-cluster/worker-b
       - --environments=/app/environments
     volumes:
-      - worker-b-data:/data
+      - /tmp/cell-cluster/worker-b:/tmp/cell-cluster/worker-b
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /usr/bin/docker:/usr/bin/docker:ro
     depends_on:
       - control
-
-volumes:
-  control-data:
-  worker-a-data:
-  worker-b-data:

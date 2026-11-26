@@ -25,19 +25,24 @@ TCP `--listen-http` requires `Authorization: Bearer` (`CELL_AGENT_TOKEN` or `CEL
 
 ## Cursor `mcp.json`
 
+Project file [`.cursor/mcp.json`](../../.cursor/mcp.json) points at the local Docker compose control plane:
+
 ```json
 {
   "mcpServers": {
     "cell": {
-      "command": "cell-mcp",
+      "command": "/home/YOU/.cell/mcp-venv/bin/cell-mcp",
       "env": {
-        "CELL_ENDPOINT": "unix:///home/YOU/.cell/celld.sock",
-        "CELL_WORKER_TOKEN": "optional-when-using-http"
+        "CELL_ENDPOINT": "http://127.0.0.1:18080",
+        "CELL_WORKER_TOKEN": "cell-dev-token"
       }
     }
   }
 }
 ```
+
+Install once: `uv venv ~/.cell/mcp-venv && uv pip install --python ~/.cell/mcp-venv/bin/python -e integrations/mcp 'mcp>=1.0,<2'`.  
+Then **Cursor → MCP → refresh/reload** so tools `cell_create` / `cell_exec` / … appear.
 
 ## Run
 
