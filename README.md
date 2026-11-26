@@ -2,8 +2,6 @@
 
 **Self-hosted sandboxes for AI coding agents** — MIT, E2B-style Python API, Docker or Firecracker isolation.
 
-> Formerly sketched as “Spark”; renamed to **Cell** to avoid collision with Apache Spark.
-
 A **Cell** is a disposable execution workspace: checkout code, install deps, build/test, snapshot, destroy — while reusable caches survive. You run the control plane; data stays on your hosts.
 
 **Start here:** [docs/quickstart.md](docs/quickstart.md) · Support: [docs/ops/SUPPORT.md](docs/ops/SUPPORT.md) · Custom images / limits: [docs/custom-images.md](docs/custom-images.md)
@@ -11,7 +9,7 @@ A **Cell** is a disposable execution workspace: checkout code, install deps, bui
 | Path | Command |
 |------|---------|
 | Docker (default) | `go build -o bin/celld ./cmd/celld && ./bin/celld serve --mode=all --environments ./environments` |
-| MicroVM | `./scripts/setup-microvm.sh` then `CELL_RUNTIME=microvm ./bin/celld serve …` |
+| MicroVM | `make celld microvm` then `CELL_RUNTIME=microvm ./bin/celld serve …` |
 | Python SDK | `pip install -e sdk/python` → `Sandbox.create` / `commands.run` / `files.*` / `snapshot` |
 | MCP (Cursor) | `pip install -e integrations/mcp` → `cell-mcp` |
 | DeepSeek Harness | `dsh plugin add ./integrations/dsh-cell` |
@@ -42,12 +40,8 @@ Module: `github.com/YanChao1999/Cell` · version `0.8.1-dev` (post-0.8.0).
 ## Build
 
 ```bash
-export PATH=$HOME/.local/bin:$HOME/.local/go/bin:/usr/local/go/bin:$PATH
-go build -o bin/celld ./cmd/celld
-go build -o bin/cell ./cmd/cell
-CGO_ENABLED=0 go build -o bin/cell-egress ./cmd/cell-egress
-CGO_ENABLED=0 go build -o bin/cell-guest-agent ./cmd/cell-guest-agent
-go test ./internal/worker/... ./internal/control/... ./internal/version/
+make build   # bin/celld cell cell-egress cell-guest-agent
+make test    # ./internal/worker/... control/... version/
 ```
 
 ## Run (`mode=all`)
@@ -75,16 +69,12 @@ Without Docker, celld logs a host-fallback line (dev/CI only).
 ## MicroVM (one shot)
 
 ```bash
-./scripts/setup-microvm.sh          # firecracker + jailer + kernel + ~11MiB rootfs
-./scripts/microvm-smoke.sh          # artifact check; skips guest boot without /dev/kvm
-export PATH="$HOME/.cell/runtime/microvm:$PATH"
-export CELL_RUNTIME=microvm
-export CELL_MICROVM_DIR=$HOME/.cell/runtime/microvm
-export CELL_MICROVM_JAILER=$HOME/.cell/runtime/microvm/jailer
+make celld microvm   # build + Firecracker/jailer/kernel/rootfs + smoke
+# prints exports: CELL_RUNTIME / CELL_MICROVM_DIR / PATH / jailer
 # Dev only: export CELL_MICROVM_ALLOW_UNJAILED=1
 ```
 
-CI uploads a `cell-microvm-rootfs` artifact from the Ultra-tiny MicroVM rootfs job (14-day retention).
+Smoke skips guest boot without `/dev/kvm`. CI uploads a `cell-microvm-rootfs` artifact from the Ultra-tiny MicroVM rootfs job (14-day retention).
 
 ## Python SDK
 
@@ -135,6 +125,12 @@ make celld mcp-install     # cell-mcp for Cursor (.cursor/mcp.json)
 ./scripts/cluster-smoke.sh
 # Grafana http://127.0.0.1:13000 (admin/cell) · metrics UI http://127.0.0.1:18080/metrics/ui
 ```
+
+## Contributing & community
+
+- Contribute: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Code of Conduct: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+- Security reports (private): [SECURITY.md](SECURITY.md)
 
 ## Ops & security
 

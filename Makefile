@@ -10,7 +10,7 @@ COMPOSE := docker compose -f docker-compose.yml -f docker-compose.prebuilt.yml
 COMPOSE_OBS := $(COMPOSE) -f docker-compose.obs.yml
 MCP_VENV ?= $(HOME)/.cell/mcp-venv
 
-.PHONY: celld up local-cluster obs down status build mcp-install help
+.PHONY: celld up local-cluster obs down status build test microvm microvm-smoke mcp-install help
 
 # Prefix so `make celld up` is valid (make runs both targets).
 celld:
@@ -24,6 +24,9 @@ help:
 	@echo '  make celld status          health + workers'
 	@echo '  make celld down            stop cluster (+ obs)'
 	@echo '  make celld mcp-install     install cell-mcp into $(MCP_VENV)'
+	@echo '  make celld microvm         setup Firecracker + jailer + kernel + rootfs + smoke'
+	@echo '  make build                 build celld / cell / cell-egress / cell-guest-agent'
+	@echo '  make test                  go test worker + control + version'
 	@echo ''
 	@echo 'Grafana  http://127.0.0.1:13000  (admin/cell)'
 	@echo 'Metrics  http://127.0.0.1:18080/metrics/ui'
@@ -33,7 +36,28 @@ build:
 	@command -v go >/dev/null || { echo 'go not on PATH'; exit 127; }
 	GOTOOLCHAIN=auto go build -trimpath -ldflags='-s -w' -o bin/celld ./cmd/celld
 	GOTOOLCHAIN=auto go build -trimpath -ldflags='-s -w' -o bin/cell ./cmd/cell
-	GOTOOLCHAIN=auto go build -trimpath -ldflags='-s -w' -o bin/cell-egress ./cmd/cell-egress
+	GOTOOLCHAIN=auto CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o bin/cell-egress ./cmd/cell-egress
+	GOTOOLCHAIN=auto CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o bin/cell-guest-agent ./cmd/cell-guest-agent
+
+test:
+	@command -v go >/dev/null || { echo 'go not on PATH'; exit 127; }
+	GOTOOLCHAIN=auto go test ./internal/worker/... ./internal/control/... ./internal/version/
+
+# One-shot MicroVM artifacts under ~/.cell/runtime/microvm (or CELL_MICROVM_DIR).
+microvm: build
+	./scripts/setup-microvm.sh
+	./scripts/microvm-smoke.sh
+	@echo ''
+	@echo 'Then:'
+	@echo '  export PATH="$${CELL_MICROVM_DIR:-$$HOME/.cell/runtime/microvm}:$$PATH"'
+	@echo '  export CELL_RUNTIME=microvm'
+	@echo '  export CELL_MICROVM_DIR=$${CELL_MICROVM_DIR:-$$HOME/.cell/runtime/microvm}'
+	@echo '  export CELL_MICROVM_JAILER=$$CELL_MICROVM_DIR/jailer'
+	@echo '  # Dev only: export CELL_MICROVM_ALLOW_UNJAILED=1'
+	@echo '  ./bin/celld serve --mode=all --environments ./environments'
+
+microvm-smoke:
+	./scripts/microvm-smoke.sh
 
 up local-cluster: build
 	mkdir -p /tmp/cell-cluster/{control,worker-a,worker-b}

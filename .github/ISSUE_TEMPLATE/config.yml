@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/YanChao1999/Cell/security/advisories/new
+    about: Report isolation, auth, or supply-chain issues privately (do not file a public issue).
+  - name: Support matrix & ops docs
+    url: https://github.com/YanChao1999/Cell/blob/main/docs/ops/SUPPORT.md
+    about: What is supported today (runtimes, auth, snapshots, observability).
+  - name: Quickstart
+    url: https://github.com/YanChao1999/Cell/blob/main/docs/quickstart.md
+    about: Get a local celld / cluster running before filing “how do I…?” questions.
