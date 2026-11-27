@@ -26,6 +26,7 @@ import (
 	"github.com/YanChao1999/Cell/internal/worker/auth"
 	"github.com/YanChao1999/Cell/internal/worker/cache"
 	"github.com/YanChao1999/Cell/internal/worker/envtemplate"
+	"github.com/YanChao1999/Cell/internal/worker/hoststats"
 	"github.com/YanChao1999/Cell/internal/worker/httpserver"
 	"github.com/YanChao1999/Cell/internal/worker/manager"
 	"github.com/YanChao1999/Cell/internal/worker/peers"
@@ -69,6 +70,7 @@ Flags (serve):
   --mode            all | control | worker
   --socket          unix socket (default <cell-home>/celld.sock); used in mode=all
   --listen-http     TCP listen addr for control and/or worker RPC (e.g. :8080)
+                    requires --worker-token / CELL_WORKER_TOKEN (Agent API auth on TCP)
   --control-url     control plane base URL for mode=worker registration
   --cell-home       base dir (default ~/.cell); sets defaults for other paths
   --state-dir       meta state dir (default <cell-home>/state)
@@ -465,6 +467,7 @@ func registerWithControl(ctx context.Context, controlURL, id, endpoint string, w
 	cap := w.Capacity()
 	body := registry.RegisterRequest{
 		ID: id, Endpoint: endpoint, MaxCells: cap.MaxCells, UsedCells: cap.UsedCells, CacheKeys: cacheKeys(w),
+		Host: workerHost(w),
 	}
 	return postJSON(ctx, controlURL+"/v1/workers/register", body, cred.get())
 }
@@ -478,12 +481,32 @@ func heartbeatToControl(ctx context.Context, controlURL, id, endpoint string, w 
 			return
 		case <-t.C:
 			cap := w.Capacity()
-			body := registry.HeartbeatRequest{UsedCells: cap.UsedCells, MaxCells: cap.MaxCells, CacheKeys: cacheKeys(w)}
+			body := registry.HeartbeatRequest{
+				UsedCells: cap.UsedCells, MaxCells: cap.MaxCells, CacheKeys: cacheKeys(w),
+				Host: workerHost(w),
+			}
 			if err := postJSON(ctx, controlURL+"/v1/workers/"+id+"/heartbeat", body, cred.get()); err != nil {
 				log.Printf("celld: heartbeat: %v — re-registering", err)
 				_ = registerWithControl(ctx, controlURL, id, endpoint, w, cred)
 			}
 		}
+	}
+}
+
+func workerHost(w workerapi.Worker) registry.HostResources {
+	diskPath := "/"
+	if lw, ok := w.(*manager.LocalWorker); ok {
+		if root := lw.WorkspacesRoot(); root != "" {
+			diskPath = root
+		}
+	}
+	s := hoststats.Collect(diskPath)
+	return registry.HostResources{
+		CPURatio:       s.CPURatio,
+		MemUsedBytes:   s.MemUsedBytes,
+		MemTotalBytes:  s.MemTotalBytes,
+		DiskUsedBytes:  s.DiskUsedBytes,
+		DiskTotalBytes: s.DiskTotalBytes,
 	}
 }
 
@@ -546,6 +569,7 @@ func heartbeatLocalWorker(ctx context.Context, reg *registry.Registry, w workera
 			cap := w.Capacity()
 			if _, err := reg.Heartbeat(w.ID(), registry.HeartbeatRequest{
 				UsedCells: cap.UsedCells, MaxCells: cap.MaxCells, CacheKeys: cacheKeys(w),
+				Host: workerHost(w),
 			}); err != nil {
 				log.Printf("celld: worker heartbeat: %v", err)
 			}

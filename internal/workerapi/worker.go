@@ -30,11 +30,13 @@ type CacheIndex interface {
 
 // Cell is a running disposable environment on a worker.
 type Cell struct {
-	ID          string
-	Workspace   string
-	Environment string
-	Status      string
-	DiskLimit   string // template/request disk cap (portable host-side enforcement)
+	ID          string             `json:"id"`
+	Workspace   string             `json:"workspace,omitempty"`
+	Environment string             `json:"environment"`
+	Status      string             `json:"status"`
+	DiskLimit   string             `json:"disk_limit,omitempty"` // template/request disk cap
+	Error       string             `json:"error,omitempty"`
+	Timings     *api.CreateTimings `json:"timings,omitempty"`
 }
 
 // Worker is the interface implemented by LocalWorker and remote workers.
@@ -43,6 +45,7 @@ type Worker interface {
 	Capacity() Capacity
 	CacheIndex() CacheIndex
 	CreateCell(ctx context.Context, req api.CreateCellRequest) (*Cell, error)
+	GetCell(ctx context.Context, cellID string) (*Cell, error)
 	Exec(ctx context.Context, cellID string, req api.ExecRequest) (*api.ExecResult, error)
 	DestroyCell(ctx context.Context, cellID string) error
 }

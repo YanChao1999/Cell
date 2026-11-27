@@ -2,16 +2,14 @@
 
 **Self-hosted sandboxes for AI coding agents** — MIT, E2B-style Python API, Docker or Firecracker isolation.
 
-> Formerly sketched as “Spark”; renamed to **Cell** to avoid collision with Apache Spark.
-
 A **Cell** is a disposable execution workspace: checkout code, install deps, build/test, snapshot, destroy — while reusable caches survive. You run the control plane; data stays on your hosts.
 
-**Start here:** [docs/quickstart.md](docs/quickstart.md) · Support: [docs/ops/SUPPORT.md](docs/ops/SUPPORT.md)
+**Start here:** [docs/quickstart.md](docs/quickstart.md) · Support: [docs/ops/SUPPORT.md](docs/ops/SUPPORT.md) · Custom images / limits: [docs/custom-images.md](docs/custom-images.md)
 
 | Path | Command |
 |------|---------|
 | Docker (default) | `go build -o bin/celld ./cmd/celld && ./bin/celld serve --mode=all --environments ./environments` |
-| MicroVM | `./scripts/setup-microvm.sh` then `CELL_RUNTIME=microvm ./bin/celld serve …` |
+| MicroVM | `make celld microvm` then `CELL_RUNTIME=microvm ./bin/celld serve …` |
 | Python SDK | `pip install -e sdk/python` → `Sandbox.create` / `commands.run` / `files.*` / `snapshot` |
 | MCP (Cursor) | `pip install -e integrations/mcp` → `cell-mcp` |
 | DeepSeek Harness | `dsh plugin add ./integrations/dsh-cell` |
@@ -37,17 +35,13 @@ Isolation story and diagrams: [ARCHITECTURE.md](ARCHITECTURE.md) · MicroVM desi
 - **Caches** — durable host dirs; env templates declare mounts
 - **Network** — `default` \| `none` \| `allowlist` (`cell-egress`)
 
-Module: `github.com/YanChao1999/Cell` · version `0.8.1-dev` (post-0.8.0).
+Module: `github.com/YanChao1999/Cell` · version `0.8.1`.
 
 ## Build
 
 ```bash
-export PATH=$HOME/.local/bin:$HOME/.local/go/bin:/usr/local/go/bin:$PATH
-go build -o bin/celld ./cmd/celld
-go build -o bin/cell ./cmd/cell
-CGO_ENABLED=0 go build -o bin/cell-egress ./cmd/cell-egress
-CGO_ENABLED=0 go build -o bin/cell-guest-agent ./cmd/cell-guest-agent
-go test ./internal/worker/... ./internal/control/... ./internal/version/
+make build   # bin/celld cell cell-egress cell-guest-agent
+make test    # ./internal/worker/... control/... version/
 ```
 
 ## Run (`mode=all`)
@@ -75,16 +69,12 @@ Without Docker, celld logs a host-fallback line (dev/CI only).
 ## MicroVM (one shot)
 
 ```bash
-./scripts/setup-microvm.sh          # firecracker + jailer + kernel + ~11MiB rootfs
-./scripts/microvm-smoke.sh          # artifact check; skips guest boot without /dev/kvm
-export PATH="$HOME/.cell/runtime/microvm:$PATH"
-export CELL_RUNTIME=microvm
-export CELL_MICROVM_DIR=$HOME/.cell/runtime/microvm
-export CELL_MICROVM_JAILER=$HOME/.cell/runtime/microvm/jailer
+make celld microvm   # build + Firecracker/jailer/kernel/rootfs + smoke
+# prints exports: CELL_RUNTIME / CELL_MICROVM_DIR / PATH / jailer
 # Dev only: export CELL_MICROVM_ALLOW_UNJAILED=1
 ```
 
-CI uploads a `cell-microvm-rootfs` artifact from the Ultra-tiny MicroVM rootfs job (14-day retention).
+Smoke skips guest boot without `/dev/kvm`. CI uploads a `cell-microvm-rootfs` artifact from the Ultra-tiny MicroVM rootfs job (14-day retention).
 
 ## Python SDK
 
@@ -117,7 +107,7 @@ On start, celld ensures well-known dirs under `--cache-dir`:
 
 `go-mod`, `go-build`, `pip-cache`, `python-venv`, `zephyr-modules`, `west-cache`, `yocto-downloads`, `yocto-sstate`, `ccache`
 
-Env templates declare mounts (see `environments/`).
+Env templates declare mounts and **required** `default_limits` (cpu/memory/disk); see `environments/` and [docs/custom-images.md](docs/custom-images.md).
 
 ## TTL reaper
 
@@ -126,17 +116,29 @@ Default Cell TTL is **30m** (override with create `ttl`). The reaper ticks on st
 ## Cluster / observability
 
 ```bash
-docker compose up --build -d
+# One-liners (see Makefile):
+make celld up              # host-build binaries + Docker-runtime compose cluster
+make celld local-cluster   # alias for up
+make celld obs             # Prometheus + Grafana
+make celld status          # health + workers
+make celld mcp-install     # cell-mcp for Cursor (.cursor/mcp.json)
 ./scripts/cluster-smoke.sh
-# Optional Grafana/Prometheus: docker-compose.obs.yml
+# Grafana http://127.0.0.1:13000 (admin/cell) · metrics UI http://127.0.0.1:18080/metrics/ui
 ```
+
+## Contributing & community
+
+- Contribute: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Code of Conduct: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+- Security reports (private): [SECURITY.md](SECURITY.md)
 
 ## Ops & security
 
 - Support matrix: [docs/ops/SUPPORT.md](docs/ops/SUPPORT.md)
 - Restart / rolling: [docs/ops/PLAYBOOK.md](docs/ops/PLAYBOOK.md)
 - Upgrades: [docs/ops/UPGRADE.md](docs/ops/UPGRADE.md)
-- Release cut: [docs/ops/RELEASE.md](docs/ops/RELEASE.md) (`./scripts/release.sh 0.8.0` when ready)
+- Release cut: [docs/ops/RELEASE.md](docs/ops/RELEASE.md) (`./scripts/release.sh x.y.z`)
+- npm / PyPI adapters: [docs/ops/PUBLISH.md](docs/ops/PUBLISH.md) (`dsh-plugin-cell`, `cell-mcp`)
 - Changelog: [CHANGELOG.md](CHANGELOG.md)
 - Threat model: [docs/security/THREAT_MODEL.md](docs/security/THREAT_MODEL.md)
 - Escape checklist: [docs/security/ESCAPE_CHECKLIST.md](docs/security/ESCAPE_CHECKLIST.md)

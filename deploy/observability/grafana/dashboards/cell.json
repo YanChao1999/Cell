@@ -7,129 +7,464 @@
   "links": [],
   "panels": [
     {
-      "title": "Create rate (ok / error)",
-      "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "title": "",
+      "type": "text",
+      "gridPos": { "h": 2, "w": 24, "x": 0, "y": 0 },
+      "options": {
+        "mode": "markdown",
+        "content": "**Read gauges left→right (red = fix first).** Low *mirror cache* → sticky workers / longer `CELL_GIT_MIRROR_MAX_AGE`. High *git share of create* → warm git mirrors. High *Docker share* → pre-pull images. Low *env cache hit* → keep workers warm (pip/go/ccache). Red *worker disk/mem/CPU* → scale workers or lower `default_limits`."
+      }
+    },
+    {
+      "title": "Create OK%",
+      "description": "Red → investigate create errors (image missing, limits, git auth)",
+      "type": "gauge",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 2 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      },
       "fieldConfig": {
         "defaults": {
-          "unit": "ops",
-          "custom": { "drawStyle": "line", "fillOpacity": 15, "spanNulls": true }
-        },
-        "overrides": []
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 0.95 },
+              { "color": "green", "value": 0.99 }
+            ]
+          }
+        }
       },
       "targets": [
         {
-          "expr": "rate(cell_create_total{result=\"ok\"}[1m])",
-          "legendFormat": "ok",
+          "expr": "(sum(cell_create_total{result=\"ok\"}) / clamp_min(sum(cell_create_total), 1)) or vector(0)",
+          "instant": true,
+          "legendFormat": "ok%",
           "refId": "A"
-        },
-        {
-          "expr": "rate(cell_create_total{result=\"error\"}[1m])",
-          "legendFormat": "error",
-          "refId": "B"
         }
       ]
     },
     {
-      "title": "Exec rate (ok / error)",
-      "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "title": "Mirror cache%",
+      "description": "Live share of git mirror TTL hits (not range increase — avoids No data after restarts). Red → cold clones.",
+      "type": "gauge",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 2 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "showThresholdMarkers": true
+      },
       "fieldConfig": {
         "defaults": {
-          "unit": "ops",
-          "custom": { "drawStyle": "line", "fillOpacity": 15, "spanNulls": true }
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 0.4 },
+              { "color": "green", "value": 0.7 }
+            ]
+          }
         }
       },
       "targets": [
         {
-          "expr": "rate(cell_exec_total{result=\"ok\"}[1m])",
-          "legendFormat": "ok",
+          "expr": "(sum(cell_git_mirror_total{result=\"cache\"}) / clamp_min(sum(cell_git_mirror_total), 1)) or vector(0)",
+          "instant": true,
+          "legendFormat": "cache%",
           "refId": "A"
-        },
-        {
-          "expr": "rate(cell_exec_total{result=\"error\"}[1m])",
-          "legendFormat": "error",
-          "refId": "B"
         }
       ]
     },
     {
-      "title": "Avg create latency",
-      "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "title": "Env cache hit%",
+      "description": "Live durable-mount hit share. Red → cold workers / empty caches",
+      "type": "gauge",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 2 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "showThresholdMarkers": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 0.4 },
+              { "color": "green", "value": 0.7 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "(sum(cell_cache_mount_total{result=\"hit\"}) / clamp_min(sum(cell_cache_mount_total), 1)) or vector(0)",
+          "instant": true,
+          "legendFormat": "hit%",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Git share of create",
+      "description": "fetch seconds / with_repo create seconds (lifetime). Red → git dominates",
+      "type": "gauge",
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 2 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "showThresholdMarkers": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 0.4 },
+              { "color": "red", "value": 0.65 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "(sum(cell_create_phase_duration_seconds_sum{phase=\"fetch\"}) / clamp_min(sum(cell_create_duration_seconds_sum{repo=\"yes\"}), 1e-9)) or vector(0)",
+          "instant": true,
+          "legendFormat": "git%",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Docker share of create",
+      "description": "runtime seconds / all create seconds (lifetime). Red → pre-pull images",
+      "type": "gauge",
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 2 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "showThresholdMarkers": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 0.4 },
+              { "color": "red", "value": 0.65 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "(sum(cell_create_phase_duration_seconds_sum{phase=\"runtime\"}) / clamp_min(sum(cell_create_duration_seconds_sum{repo=~\"yes|no\"}), 1e-9)) or vector(0)",
+          "instant": true,
+          "legendFormat": "docker%",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Worker pressure",
+      "description": "Worst worker max(CPU, mem%, disk%). Red → scale out or lower limits",
+      "type": "gauge",
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 2 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "showThresholdMarkers": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 0.7 },
+              { "color": "red", "value": 0.85 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "max(cell_worker_cpu_ratio or (cell_worker_memory_used_bytes / clamp_min(cell_worker_memory_total_bytes, 1)) or (cell_worker_disk_used_bytes / clamp_min(cell_worker_disk_total_bytes, 1))) or vector(0)",
+          "instant": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Latency (what to tune)",
+      "description": "create all / with_repo / no_repo · phases fetch|runtime|setup · exec. Falling fetch/setup after warm-up = healthy cache.",
+      "type": "timeseries",
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
       "fieldConfig": {
         "defaults": {
           "unit": "s",
-          "custom": { "drawStyle": "line", "fillOpacity": 10, "spanNulls": true }
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 6, "spanNulls": true }
         }
       },
       "targets": [
         {
-          "expr": "rate(cell_create_duration_seconds_sum[1m]) / clamp_min(rate(cell_create_duration_seconds_count[1m]), 1e-9)",
-          "legendFormat": "create pavg",
-          "refId": "A"
-        }
-      ]
-    },
-    {
-      "title": "Avg exec latency",
-      "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s",
-          "custom": { "drawStyle": "line", "fillOpacity": 10, "spanNulls": true }
-        }
-      },
-      "targets": [
-        {
-          "expr": "rate(cell_exec_duration_seconds_sum[1m]) / clamp_min(rate(cell_exec_duration_seconds_count[1m]), 1e-9)",
-          "legendFormat": "exec pavg",
-          "refId": "A"
-        }
-      ]
-    },
-    {
-      "title": "Totals",
-      "type": "stat",
-      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 16 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
-      "targets": [
-        {
-          "expr": "cell_create_total{result=\"ok\"}",
-          "legendFormat": "creates ok",
+          "expr": "sum(rate(cell_create_duration_seconds_sum{repo=~\"yes|no\"}[5m])) / clamp_min(sum(rate(cell_create_duration_seconds_count{repo=~\"yes|no\"}[5m])), 1e-9)",
+          "legendFormat": "create",
           "refId": "A"
         },
         {
-          "expr": "cell_create_total{result=\"error\"}",
-          "legendFormat": "creates err",
+          "expr": "rate(cell_create_phase_duration_seconds_sum{phase=\"fetch\"}[5m]) / clamp_min(rate(cell_create_phase_duration_seconds_count{phase=\"fetch\"}[5m]), 1e-9)",
+          "legendFormat": "fetch",
           "refId": "B"
         },
         {
-          "expr": "cell_exec_total{result=\"ok\"}",
-          "legendFormat": "execs ok",
+          "expr": "rate(cell_create_phase_duration_seconds_sum{phase=\"runtime\"}[5m]) / clamp_min(rate(cell_create_phase_duration_seconds_count{phase=\"runtime\"}[5m]), 1e-9)",
+          "legendFormat": "runtime",
           "refId": "C"
         },
         {
-          "expr": "cell_destroy_total{result=\"ok\"}",
-          "legendFormat": "destroys ok",
+          "expr": "rate(cell_create_phase_duration_seconds_sum{phase=\"setup\"}[5m]) / clamp_min(rate(cell_create_phase_duration_seconds_count{phase=\"setup\"}[5m]), 1e-9)",
+          "legendFormat": "setup",
           "refId": "D"
+        },
+        {
+          "expr": "rate(cell_exec_duration_seconds_sum[5m]) / clamp_min(rate(cell_exec_duration_seconds_count[5m]), 1e-9)",
+          "legendFormat": "exec",
+          "refId": "E"
+        }
+      ]
+    },
+    {
+      "title": "Time share",
+      "description": "Where create seconds go in range — biggest slice = first optimization target",
+      "type": "piechart",
+      "gridPos": { "h": 6, "w": 4, "x": 12, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": {
+        "pieType": "donut",
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "displayLabels": ["percent"]
+      },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [
+        {
+          "expr": "increase(cell_create_phase_duration_seconds_sum[$__range])",
+          "legendFormat": "{{phase}}",
+          "instant": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Git mirror",
+      "description": "cache = TTL hit (good) · fetch = network update · clone = cold start",
+      "type": "piechart",
+      "gridPos": { "h": 6, "w": 4, "x": 16, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": {
+        "pieType": "donut",
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "displayLabels": ["percent"]
+      },
+      "fieldConfig": {
+        "defaults": { "unit": "short" },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "cache" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "clone" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "expr": "increase(cell_git_mirror_total[$__range])",
+          "legendFormat": "{{result}}",
+          "instant": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Env cache",
+      "description": "Durable mounts (pip/go-mod/ccache): hit = already warm · miss = cold",
+      "type": "piechart",
+      "gridPos": { "h": 6, "w": 4, "x": 20, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": {
+        "pieType": "donut",
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "displayLabels": ["percent"]
+      },
+      "fieldConfig": {
+        "defaults": { "unit": "short" },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "hit" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "miss" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "expr": "increase(cell_cache_mount_total{result=~\"hit|miss\"}[$__range])",
+          "legendFormat": "{{result}}",
+          "instant": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Cache warm-up",
+      "description": "Cumulative share (not rate). No data before was rate() needing dense scrapes — this plots running cache%/hit% as counters grow.",
+      "type": "timeseries",
+      "gridPos": { "h": 5, "w": 8, "x": 0, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10, "spanNulls": true }
+        }
+      },
+      "targets": [
+        {
+          "expr": "(sum(cell_git_mirror_total{result=\"cache\"}) / clamp_min(sum(cell_git_mirror_total), 1)) or vector(0)",
+          "legendFormat": "git mirror cache%",
+          "refId": "A"
+        },
+        {
+          "expr": "(sum(cell_cache_mount_total{result=\"hit\"}) / clamp_min(sum(cell_cache_mount_total), 1)) or vector(0)",
+          "legendFormat": "env cache hit%",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "title": "worker-a",
+      "description": "CPU / mem / disk for this worker only",
+      "type": "timeseries",
+      "gridPos": { "h": 5, "w": 8, "x": 8, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 8, "spanNulls": true }
+        }
+      },
+      "targets": [
+        {
+          "expr": "cell_worker_cpu_ratio{worker=\"worker-a\"}",
+          "legendFormat": "cpu",
+          "refId": "A"
+        },
+        {
+          "expr": "cell_worker_memory_used_bytes{worker=\"worker-a\"} / clamp_min(cell_worker_memory_total_bytes{worker=\"worker-a\"}, 1)",
+          "legendFormat": "mem",
+          "refId": "B"
+        },
+        {
+          "expr": "cell_worker_disk_used_bytes{worker=\"worker-a\"} / clamp_min(cell_worker_disk_total_bytes{worker=\"worker-a\"}, 1)",
+          "legendFormat": "disk",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "title": "worker-b",
+      "description": "CPU / mem / disk for this worker only",
+      "type": "timeseries",
+      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 8, "spanNulls": true }
+        }
+      },
+      "targets": [
+        {
+          "expr": "cell_worker_cpu_ratio{worker=\"worker-b\"}",
+          "legendFormat": "cpu",
+          "refId": "A"
+        },
+        {
+          "expr": "cell_worker_memory_used_bytes{worker=\"worker-b\"} / clamp_min(cell_worker_memory_total_bytes{worker=\"worker-b\"}, 1)",
+          "legendFormat": "mem",
+          "refId": "B"
+        },
+        {
+          "expr": "cell_worker_disk_used_bytes{worker=\"worker-b\"} / clamp_min(cell_worker_disk_total_bytes{worker=\"worker-b\"}, 1)",
+          "legendFormat": "disk",
+          "refId": "C"
         }
       ]
     }
   ],
-  "refresh": "5s",
+  "refresh": "10s",
   "schemaVersion": 39,
   "tags": ["cell"],
   "templating": { "list": [] },
-  "time": { "from": "now-15m", "to": "now" },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {
+    "refresh_intervals": ["5s", "10s", "30s", "1m"],
+    "time_options": ["15m", "1h", "6h", "12h", "24h", "7d"]
+  },
   "timezone": "browser",
   "title": "Cell control plane",
   "uid": "cell-control",
-  "version": 1
+  "version": 10
 }

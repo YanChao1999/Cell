@@ -20,6 +20,15 @@ type Record struct {
 	ExpiresAt   time.Time `json:"expires_at"`
 	Repo        string    `json:"repo,omitempty"`
 	Ref         string    `json:"ref,omitempty"`
+	Error       string    `json:"error,omitempty"`
+	FetchMS     int64     `json:"fetch_ms,omitempty"`
+	RuntimeMS   int64     `json:"runtime_ms,omitempty"`
+	SetupMS     int64     `json:"setup_ms,omitempty"`
+	TotalMS     int64     `json:"total_ms,omitempty"`
+	Mirror      string    `json:"mirror,omitempty"`
+	CacheHit    int       `json:"cache_hit,omitempty"`
+	CacheMiss   int       `json:"cache_miss,omitempty"`
+	CachePull   int       `json:"cache_pull,omitempty"`
 }
 
 // Store is an in-memory meta store with optional JSON persistence.

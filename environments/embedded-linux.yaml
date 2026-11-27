@@ -2,6 +2,8 @@ name: embedded-linux
 description: Embedded Linux / Yocto-style build environment (placeholder image)
 
 # Placeholder — replace with a pinned Yocto/OE or Buildroot toolchain image.
+# Keep this environment separate from cpp/zephyr — do not merge toolchains.
+# See docs/custom-images.md.
 image: cell/embedded-linux:placeholder
 
 cache_mounts:
@@ -21,6 +23,7 @@ env:
   DL_DIR: /opt/yocto/downloads
   SSTATE_DIR: /opt/yocto/sstate-cache
 
+# Required for all environments (cpu/memory/disk). Yocto needs large caps.
 default_limits:
   cpu: "4"
   memory: 16Gi

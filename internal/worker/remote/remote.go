@@ -102,6 +102,14 @@ func (w *Worker) CreateCell(ctx context.Context, req api.CreateCellRequest) (*wo
 	return &out, nil
 }
 
+func (w *Worker) GetCell(ctx context.Context, cellID string) (*workerapi.Cell, error) {
+	var out workerapi.Cell
+	if err := w.doJSON(ctx, http.MethodGet, "/worker/v1/cells/"+cellID, nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 func (w *Worker) Exec(ctx context.Context, cellID string, req api.ExecRequest) (*api.ExecResult, error) {
 	var out api.ExecResult
 	if err := w.doJSON(ctx, http.MethodPost, "/worker/v1/cells/"+cellID+"/exec", req, &out); err != nil {

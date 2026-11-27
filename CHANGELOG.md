@@ -4,6 +4,29 @@ All notable changes to Cell are documented here. Versioning follows semver-ish `
 
 ## [Unreleased]
 
+## [0.8.1] — 2026-11-26
+
+### Added
+- CI: `publish-packages.yml` for `dsh-plugin-cell` (npm) + `cell-mcp` (PyPI); Dependabot for those trees; [docs/ops/PUBLISH.md](docs/ops/PUBLISH.md)
+- MCP: `cell_read` / `cell_write` / `cell_ls`; `cell_get` / `cell_wait`; `cell_sync` (local dirty-tree upload); async create (`background`/`wait`)
+- Create: `async` + live status (`creating`/`fetching`/`starting`/`setup`/`ready`/`error`) with `timings` (`fetch_ms` / `runtime_ms` / `setup_ms`)
+- Agent API: `PUT /v1/cells/{id}/workspace` to import a local tree (gzip tar)
+- Environments: `cpp.yaml`; [docs/custom-images.md](docs/custom-images.md) (custom images, mix vs split, required limits)
+- Git source: skip mirror `fetch` when fresh (`CELL_GIT_MIRROR_MAX_AGE`, default 5m); log `mirror=cache|fetch|clone` timings
+- Metrics/Grafana: one-page insight dashboard (gauges → what to fix); phase + cache reuse; per-worker CPU/mem/disk via heartbeats (`cell_worker_*`)
+- Community: CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, issue/PR templates; `make build` / `make test` / `make celld microvm`
+
+### Changed
+- Environment templates must set `default_limits.cpu` / `memory` / `disk` (fail closed; overridable per create)
+
+### Security
+- TCP `--listen-http` refuses to start without `CELL_WORKER_TOKEN`; Agent routes require Bearer (`worker`/`agent`)
+- Snapshot restore bound to owner fingerprint; snapshot dir/files `0700`/`0600`
+- Workspace/microVM/guest untar aligned with cache policy (reject links, abs/`..`, mask mode)
+- MicroVM fetch verifies Firecracker tarball sha256; S3 kernel needs pin or `CELL_MICROVM_ALLOW_UNVERIFIED_KERNEL=1`
+- DSH client uses `https` for TLS endpoints; MCP/SDK/DSH send `CELL_AGENT_TOKEN`/`CELL_WORKER_TOKEN`
+- Release asset SHA256 pins in [docs/ops/release-assets-v0.8.0.sha256](docs/ops/release-assets-v0.8.0.sha256)
+
 ## [0.8.0] — 2026-11-15
 
 Productization cut: discoverability, MicroVM one-shot, MCP + DSH plugin.

@@ -21,7 +21,9 @@
 1. **Guest → Host**: Docker or microVM (`CELL_RUNTIME=microvm`) is the isolation boundary. Host fallback is **dev/CI only**. MicroVM boots through Firecracker **jailer** unless `CELL_MICROVM_ALLOW_UNJAILED=1`.
 2. **Worker ↔ Control**: Shared secret (`CELL_WORKER_TOKEN`) + optional short-lived HMAC tokens. Not mTLS yet.
 3. **Worker ↔ Worker**: Cache pull over worker RPC with the same Bearer auth.
-4. **Egress**: Template `network` — Docker: `none` / `default` / `allowlist` (sidecar). MicroVM M2: `none` (no NIC) / `allowlist` (TAP + host `cell-egress`); open NAT rejected.
+4. **Agent ↔ Control (TCP)**: `--listen-http` requires `CELL_WORKER_TOKEN`; Agent routes (`/v1/cells*`, `/v1/run`) need Bearer (`worker` or `agent` scope). Unix socket remains local/`0600` trust when token unset.
+5. **Snapshots**: each snapshot stores an owner fingerprint (hash of Bearer, or `anonymous` on unauthed unix); restore requires the same fingerprint.
+6. **Egress**: Template `network` — Docker: `none` / `default` / `allowlist` (sidecar). MicroVM M2: `none` (no NIC) / `allowlist` (TAP + host `cell-egress`); open NAT rejected.
 
 ## What we prevent today (design intent)
 

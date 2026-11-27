@@ -42,6 +42,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /worker/v1/health", s.handleHealth)
 	s.mux.HandleFunc("GET /worker/v1/capacity", s.handleCapacity)
 	s.mux.HandleFunc("POST /worker/v1/cells", s.handleCreate)
+	s.mux.HandleFunc("GET /worker/v1/cells/{id}", s.handleGetCell)
 	s.mux.HandleFunc("POST /worker/v1/cells/{id}/exec", s.handleExec)
 	s.mux.HandleFunc("DELETE /worker/v1/cells/{id}", s.handleDestroy)
 	s.mux.HandleFunc("GET /worker/v1/cells/{id}/workspace", s.handleWorkspaceGet)
@@ -83,6 +84,16 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, cell)
+}
+
+func (s *Server) handleGetCell(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	cell, err := s.worker.GetCell(r.Context(), id)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, cell)
 }
 
 func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {

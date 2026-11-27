@@ -30,23 +30,39 @@ func (lw *LocalWorker) PackWorkspace(ctx context.Context, cellID string, w io.Wr
 
 // UnpackWorkspace replaces the Cell host workspace with a gzip tar.
 // Existing contents are wiped first so restore does not merge leftovers.
+// The workspace directory inode is kept (clear children only) so Docker
+// bind-mounts of /workspace stay valid after import.
 // When the runtime supports it (microVM), the guest workspace is re-synced.
 func (lw *LocalWorker) UnpackWorkspace(ctx context.Context, cellID string, r io.Reader) error {
 	cell, err := lw.getCell(cellID)
 	if err != nil {
 		return err
 	}
-	if err := os.RemoveAll(cell.Workspace); err != nil {
+	if err := clearDirContents(cell.Workspace); err != nil {
 		return fmt.Errorf("workspace archive: clear %s: %w", cell.Workspace, err)
-	}
-	if err := os.MkdirAll(cell.Workspace, 0o755); err != nil {
-		return err
 	}
 	if err := untarGzDir(r, cell.Workspace); err != nil {
 		return err
 	}
 	if rs, ok := lw.rt.(workspaceResyncer); ok {
 		return rs.ResyncWorkspace(ctx, cellID, cell.Workspace)
+	}
+	return nil
+}
+
+// clearDirContents removes all entries under dir but keeps dir itself.
+func clearDirContents(dir string) error {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if err := os.RemoveAll(filepath.Join(dir, e.Name())); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -82,6 +98,12 @@ func tarGzDir(root string, w io.Writer) error {
 		}
 		if rel == "." {
 			return nil
+		}
+		if strings.HasPrefix(rel, "..") {
+			return fmt.Errorf("workspace archive: refusing path escape %q", rel)
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("workspace archive: refusing symlink %q", rel)
 		}
 		rel = filepath.ToSlash(rel)
 		hdr, err := tar.FileInfoHeader(info, "")
@@ -122,6 +144,10 @@ func untarGzDir(r io.Reader, dest string) error {
 	if err := os.MkdirAll(dest, 0o755); err != nil {
 		return err
 	}
+	destAbs, err := filepath.Abs(dest)
+	if err != nil {
+		return err
+	}
 	gr, err := gzip.NewReader(r)
 	if err != nil {
 		return err
@@ -137,11 +163,14 @@ func untarGzDir(r io.Reader, dest string) error {
 			return err
 		}
 		name := filepath.Clean(hdr.Name)
-		if name == "." || strings.HasPrefix(name, "..") {
+		if name == "." || name == "" {
 			continue
 		}
-		target := filepath.Join(dest, name)
-		if !strings.HasPrefix(target, filepath.Clean(dest)+string(os.PathSeparator)) && target != filepath.Clean(dest) {
+		if strings.HasPrefix(name, "..") || filepath.IsAbs(name) {
+			return fmt.Errorf("workspace archive: refusing archive path %q", hdr.Name)
+		}
+		target := filepath.Join(destAbs, name)
+		if !strings.HasPrefix(target, destAbs+string(os.PathSeparator)) && target != destAbs {
 			return fmt.Errorf("workspace archive: path escapes dest: %s", hdr.Name)
 		}
 		switch hdr.Typeflag {
@@ -153,15 +182,22 @@ func untarGzDir(r io.Reader, dest string) error {
 			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 				return err
 			}
-			f, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(hdr.Mode))
+			f, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(hdr.Mode)&0o755)
 			if err != nil {
 				return err
 			}
 			_, copyErr := io.Copy(f, tr)
-			_ = f.Close()
+			closeErr := f.Close()
 			if copyErr != nil {
 				return copyErr
 			}
+			if closeErr != nil {
+				return closeErr
+			}
+		case tar.TypeSymlink, tar.TypeLink:
+			return fmt.Errorf("workspace archive: refusing link in archive %q", hdr.Name)
+		default:
+			// skip other types
 		}
 	}
 }

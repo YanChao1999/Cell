@@ -47,10 +47,13 @@ func tarGzDir(dir string, w io.Writer) (err error) {
 		if rel == "." {
 			return nil
 		}
-		rel = filepath.ToSlash(rel)
 		if strings.HasPrefix(rel, "..") {
 			return fmt.Errorf("microvm: refusing path escape %q", path)
 		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("microvm: refusing symlink %q", rel)
+		}
+		rel = filepath.ToSlash(rel)
 		hdr, hdrErr := tar.FileInfoHeader(info, "")
 		if hdrErr != nil {
 			return hdrErr
@@ -82,8 +85,13 @@ func tarGzDir(dir string, w io.Writer) (err error) {
 }
 
 // untarGzDir extracts a gzip tar into dest (creates dest if needed).
+// Matches cache transfer policy: refuse abs/.. paths, symlinks/hardlinks, mask mode.
 func untarGzDir(r io.Reader, dest string) error {
 	if err := os.MkdirAll(dest, 0o755); err != nil {
+		return err
+	}
+	destAbs, err := filepath.Abs(dest)
+	if err != nil {
 		return err
 	}
 	gr, err := gzip.NewReader(r)
@@ -92,7 +100,6 @@ func untarGzDir(r io.Reader, dest string) error {
 	}
 	defer func() { _ = gr.Close() }()
 	tr := tar.NewReader(gr)
-	root := filepath.Clean(dest)
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
@@ -102,11 +109,14 @@ func untarGzDir(r io.Reader, dest string) error {
 			return err
 		}
 		name := filepath.Clean(hdr.Name)
-		if name == "." || strings.HasPrefix(name, "..") {
+		if name == "." || name == "" {
 			continue
 		}
-		target := filepath.Join(root, name)
-		if !strings.HasPrefix(target, root+string(os.PathSeparator)) && target != root {
+		if strings.HasPrefix(name, "..") || filepath.IsAbs(name) {
+			return fmt.Errorf("microvm: refusing archive path %q", hdr.Name)
+		}
+		target := filepath.Join(destAbs, name)
+		if !strings.HasPrefix(target, destAbs+string(os.PathSeparator)) && target != destAbs {
 			return fmt.Errorf("microvm: path escapes dest: %s", hdr.Name)
 		}
 		switch hdr.Typeflag {
@@ -118,15 +128,22 @@ func untarGzDir(r io.Reader, dest string) error {
 			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 				return err
 			}
-			f, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(hdr.Mode))
+			f, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(hdr.Mode)&0o755)
 			if err != nil {
 				return err
 			}
 			_, copyErr := io.Copy(f, tr)
-			_ = f.Close()
+			closeErr := f.Close()
 			if copyErr != nil {
 				return copyErr
 			}
+			if closeErr != nil {
+				return closeErr
+			}
+		case tar.TypeSymlink, tar.TypeLink:
+			return fmt.Errorf("microvm: refusing link in archive %q", hdr.Name)
+		default:
+			// skip other types
 		}
 	}
 }

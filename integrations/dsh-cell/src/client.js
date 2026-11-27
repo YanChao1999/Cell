@@ -1,4 +1,5 @@
 import http from 'node:http'
+import https from 'node:https'
 import os from 'node:os'
 import path from 'node:path'
 
@@ -18,6 +19,12 @@ function parseEndpoint(endpoint) {
   }
 }
 
+function authHeaders() {
+  const token = (process.env.CELL_AGENT_TOKEN || process.env.CELL_WORKER_TOKEN || '').trim()
+  if (!token) return {}
+  return { Authorization: `Bearer ${token}` }
+}
+
 /**
  * Minimal HTTP(S)/unix client for the Cell Agent API.
  * @param {string} [endpoint]
@@ -27,7 +34,7 @@ export function createCellClient(endpoint) {
 
   function request(method, apiPath, body) {
     const payload = body === undefined ? null : JSON.stringify(body)
-    const headers = { Accept: 'application/json' }
+    const headers = { Accept: 'application/json', ...authHeaders() }
     if (payload !== null) {
       headers['Content-Type'] = 'application/json'
       headers['Content-Length'] = Buffer.byteLength(payload)
@@ -44,8 +51,9 @@ export function createCellClient(endpoint) {
       opts.hostname = target.hostname
       opts.port = target.port
     }
+    const transport = target.protocol === 'https:' ? https : http
     return new Promise((resolve, reject) => {
-      const req = http.request(opts, (res) => {
+      const req = transport.request(opts, (res) => {
         const chunks = []
         res.on('data', (c) => chunks.push(c))
         res.on('end', () => {

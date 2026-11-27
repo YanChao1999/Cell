@@ -71,6 +71,18 @@ async function tick() {
     });
     cards.push('<div class="card"><div class="k">avg create</div><div class="v">' +
       avg(/cell_create_duration_seconds_sum ([0-9.]+)/, /cell_create_duration_seconds_count (\d+)/, text) + '</div></div>');
+    cards.push('<div class="card"><div class="k">avg create w/ repo</div><div class="v">' +
+      avg(/cell_create_duration_seconds_sum\{repo="yes"\} ([0-9.]+)/, /cell_create_duration_seconds_count\{repo="yes"\} (\d+)/, text) + '</div></div>');
+    cards.push('<div class="card"><div class="k">avg create no repo</div><div class="v">' +
+      avg(/cell_create_duration_seconds_sum\{repo="no"\} ([0-9.]+)/, /cell_create_duration_seconds_count\{repo="no"\} (\d+)/, text) + '</div></div>');
+    cards.push('<div class="card"><div class="k">avg fetch (git)</div><div class="v">' +
+      avg(/cell_create_phase_duration_seconds_sum\{phase="fetch"\} ([0-9.]+)/, /cell_create_phase_duration_seconds_count\{phase="fetch"\} (\d+)/, text) + '</div></div>');
+    cards.push('<div class="card"><div class="k">avg runtime (docker)</div><div class="v">' +
+      avg(/cell_create_phase_duration_seconds_sum\{phase="runtime"\} ([0-9.]+)/, /cell_create_phase_duration_seconds_count\{phase="runtime"\} (\d+)/, text) + '</div></div>');
+    cards.push('<div class="card"><div class="k">git mirror cache</div><div class="v ok">' +
+      (text.match(/cell_git_mirror_total\{result="cache"\} (\d+)/)||[,0])[1] + '</div></div>');
+    cards.push('<div class="card"><div class="k">cache mount hits</div><div class="v ok">' +
+      (text.match(/cell_cache_mount_total\{result="hit"\} (\d+)/)||[,0])[1] + '</div></div>');
     cards.push('<div class="card"><div class="k">avg exec</div><div class="v">' +
       avg(/cell_exec_duration_seconds_sum ([0-9.]+)/, /cell_exec_duration_seconds_count (\d+)/, text) + '</div></div>');
     document.getElementById("cards").innerHTML = cards.join("");

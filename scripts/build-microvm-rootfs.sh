@@ -118,6 +118,16 @@ install_rg() {
     echo "NOTE: rg download failed ($url); set CELL_RG_BIN or CELL_MICROVM_SKIP_RG=1" >&2
     return 0
   fi
+  if [[ -n "${CELL_RG_SHA256:-}" ]]; then
+    got="$(sha256sum "$TMP/rg/rg.tgz" | awk '{print $1}')"
+    if [[ "$got" != "$CELL_RG_SHA256" ]]; then
+      echo "ERROR: rg archive sha256 mismatch (got $got want $CELL_RG_SHA256)" >&2
+      return 1
+    fi
+    echo "  verified rg archive ($got)"
+  else
+    echo "NOTE: set CELL_RG_SHA256 to pin ripgrep archive integrity" >&2
+  fi
   tar -xzf "$TMP/rg/rg.tgz" -C "$TMP/rg"
   local bin
   bin="$(find "$TMP/rg" -type f -name rg | head -1)"

@@ -1,0 +1,73 @@
+name: Bug report
+description: Something broken in celld, workers, SDK, MCP, or docs that should work.
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. **Security / sandbox escape?** Use
+        [Security advisories](https://github.com/YanChao1999/Cell/security/advisories/new)
+        instead of this form.
+  - type: input
+    id: version
+    attributes:
+      label: Cell version / commit
+      description: Release tag (e.g. v0.8.0) or `git rev-parse --short HEAD`.
+      placeholder: "0.8.1 / abc1234"
+    validations:
+      required: true
+  - type: dropdown
+    id: runtime
+    attributes:
+      label: Runtime
+      options:
+        - Docker
+        - microVM (Firecracker)
+        - host (dev/CI)
+        - unknown
+    validations:
+      required: true
+  - type: dropdown
+    id: topology
+    attributes:
+      label: Topology
+      options:
+        - Single-node (mode=all)
+        - Compose control + workers (make celld up)
+        - Other / custom
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: Expected vs actual behavior.
+      placeholder: |
+        Expected: create with repo returns ready with timings.mirror=cache
+        Actual: hangs / 500 / No data in Grafana …
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction steps
+      description: Minimal commands or MCP/SDK calls.
+      placeholder: |
+        1. make celld up
+        2. curl -H "Authorization: Bearer …" …
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / metrics snippets
+      description: Redact tokens. Include worker/control log lines or `/metrics` counters if relevant.
+      render: shell
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: OS, Docker version, notable env vars (no secrets).
+      placeholder: |
+        Ubuntu 24.04, Docker 27.x, CELL_RUNTIME=docker

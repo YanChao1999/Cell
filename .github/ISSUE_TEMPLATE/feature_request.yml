@@ -1,0 +1,51 @@
+name: Feature request
+description: Propose an enhancement that fits Cell’s self-hosted sandbox scope.
+title: "[feat] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check [SUPPORT.md](https://github.com/YanChao1999/Cell/blob/main/docs/ops/SUPPORT.md)
+        for “not supported yet” items before requesting duplicates.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What pain does this solve for operators or agents?
+      placeholder: Cold creates look hung in MCP; agents double-create…
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: API / UX / ops shape you want.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds or other designs you already tried.
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Primary surface
+      options:
+        - Agent HTTP API / celld
+        - Python SDK
+        - MCP (Cursor)
+        - DSH plugin
+        - Grafana / metrics
+        - Docs / packaging
+        - Other
+    validations:
+      required: true
+  - type: checkboxes
+    id: scope-ack
+    attributes:
+      label: Scope check
+      options:
+        - label: I read SUPPORT.md and this is not listed as intentionally out of scope (or I am asking to change that).
+          required: true

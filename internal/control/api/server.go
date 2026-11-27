@@ -21,6 +21,7 @@ import (
 	"github.com/YanChao1999/Cell/internal/control/scheduler"
 	"github.com/YanChao1999/Cell/internal/worker/auth"
 	"github.com/YanChao1999/Cell/internal/worker/remote"
+	"github.com/YanChao1999/Cell/internal/workerapi"
 )
 
 const defaultTTL = 30 * time.Minute
@@ -73,7 +74,7 @@ func (s *Server) Registry() *registry.Registry { return s.registry }
 
 func (s *Server) routes() {
 	s.mux.HandleFunc("GET /health", s.handleHealth)
-	s.mux.Handle("GET /metrics", s.metrics.Handler())
+	s.mux.HandleFunc("GET /metrics", s.handleMetrics)
 	s.mux.Handle("GET /metrics/ui", metrics.UIHandler())
 	s.mux.HandleFunc("POST /v1/auth/token", s.handleIssueToken)
 	s.mux.HandleFunc("POST /v1/cells", s.handleCreate)
@@ -81,6 +82,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /v1/cells/{id}", s.handleGet)
 	s.mux.HandleFunc("DELETE /v1/cells/{id}", s.handleDelete)
 	s.mux.HandleFunc("POST /v1/cells/{id}/exec", s.handleExec)
+	s.mux.HandleFunc("PUT /v1/cells/{id}/workspace", s.handleWorkspacePut)
 	s.mux.HandleFunc("POST /v1/cells/{id}/snapshot", s.handleSnapshot)
 	s.mux.HandleFunc("POST /v1/run", s.handleRun)
 	s.mux.HandleFunc("POST /v1/workers/register", s.handleWorkerRegister)
@@ -113,13 +115,18 @@ func (s *Server) ListenAndServe(socketPath string) error {
 }
 
 // ListenAndServeHTTP serves the control API on a TCP address (e.g. ":8080").
+// Agent routes (/v1/cells*, /v1/run) require Bearer auth; refuses to listen
+// when CELL_WORKER_TOKEN / issuer is unset so the Agent API is not open.
 func (s *Server) ListenAndServeHTTP(addr string) error {
+	if s.issuer == nil || !s.issuer.Enabled() {
+		return fmt.Errorf("listen-http requires CELL_WORKER_TOKEN (or --worker-token): Agent API must not be unauthenticated on TCP")
+	}
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
 	}
-	log.Printf("celld listening on http://%s", ln.Addr().String())
-	return http.Serve(ln, s.Handler())
+	log.Printf("celld listening on http://%s (agent API auth required)", ln.Addr().String())
+	return http.Serve(ln, s.HandlerHTTP())
 }
 
 // removeStaleSocket deletes only a dead socket. A live listener is left alone
@@ -197,6 +204,36 @@ func (s *Server) handleIssueToken(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, issueTokenResponse{Token: tok, Scope: scope, ExpiresAt: exp})
 }
 
+func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	s.syncWorkerMetrics()
+	s.metrics.Handler().ServeHTTP(w, r)
+}
+
+func workerHostFromInfo(info registry.Info) metrics.WorkerHost {
+	return metrics.WorkerHost{
+		ID:             info.ID,
+		CPURatio:       info.Host.CPURatio,
+		MemUsedBytes:   info.Host.MemUsedBytes,
+		MemTotalBytes:  info.Host.MemTotalBytes,
+		DiskUsedBytes:  info.Host.DiskUsedBytes,
+		DiskTotalBytes: info.Host.DiskTotalBytes,
+		CellsUsed:      info.UsedCells,
+		CellsMax:       info.MaxCells,
+	}
+}
+
+func (s *Server) syncWorkerMetrics() {
+	if s.registry == nil || s.metrics == nil {
+		return
+	}
+	list := s.registry.List()
+	samples := make([]metrics.WorkerHost, 0, len(list))
+	for _, info := range list {
+		samples = append(samples, workerHostFromInfo(info))
+	}
+	s.metrics.SyncWorkers(samples)
+}
+
 func (s *Server) handleWorkerRegister(w http.ResponseWriter, r *http.Request) {
 	if s.registry == nil {
 		writeErr(w, http.StatusNotImplemented, "worker registry disabled")
@@ -220,6 +257,7 @@ func (s *Server) handleWorkerRegister(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	s.metrics.ObserveWorker(workerHostFromInfo(*info))
 	writeJSON(w, http.StatusCreated, info)
 }
 
@@ -244,6 +282,7 @@ func (s *Server) handleWorkerHeartbeat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.syncRemoteWorker(info)
+	s.metrics.ObserveWorker(workerHostFromInfo(*info))
 	writeJSON(w, http.StatusOK, info)
 }
 
@@ -306,7 +345,7 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	info, err := s.createCell(r.Context(), req)
+	info, err := s.createCell(r.Context(), req, agentOwnerFingerprint(r))
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -314,14 +353,23 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, info)
 }
 
-func (s *Server) createCell(ctx context.Context, req cellapi.CreateCellRequest) (*cellapi.CellInfo, error) {
+func (s *Server) createCell(ctx context.Context, req cellapi.CreateCellRequest, owner string) (*cellapi.CellInfo, error) {
 	start := time.Now()
-	info, err := s.createCellInner(ctx, req)
-	s.metrics.ObserveCreate(time.Since(start), err)
+	info, err := s.createCellInner(ctx, req, owner)
+	withRepo := strings.TrimSpace(req.Repo) != ""
+	// Async creates finish later — record wall time only for sync path here.
+	if !req.Async {
+		s.metrics.ObserveCreate(time.Since(start), err, withRepo)
+		if err == nil && info != nil && info.Timings != nil {
+			s.metrics.ObserveCreatePhases(info.Timings)
+		}
+	} else if err != nil {
+		s.metrics.ObserveCreate(time.Since(start), err, withRepo)
+	}
 	return info, err
 }
 
-func (s *Server) createCellInner(ctx context.Context, req cellapi.CreateCellRequest) (*cellapi.CellInfo, error) {
+func (s *Server) createCellInner(ctx context.Context, req cellapi.CreateCellRequest, owner string) (*cellapi.CellInfo, error) {
 	if req.SnapshotID != "" && !validSnapshotID(req.SnapshotID) {
 		return nil, fmt.Errorf("invalid snapshot_id")
 	}
@@ -333,11 +381,19 @@ func (s *Server) createCellInner(ctx context.Context, req cellapi.CreateCellRequ
 	if err != nil {
 		return nil, err
 	}
+	// Snapshot restore needs a ready runtime; wait if create was async.
 	if req.SnapshotID != "" {
-		if err := s.restoreSnapshot(ctx, worker, cell.ID, req.SnapshotID); err != nil {
+		if cell.Status != "ready" {
+			if err := s.waitWorkerReady(ctx, worker, cell); err != nil {
+				_ = worker.DestroyCell(ctx, cell.ID)
+				return nil, err
+			}
+		}
+		if err := s.restoreSnapshot(ctx, worker, cell.ID, req.SnapshotID, owner); err != nil {
 			_ = worker.DestroyCell(ctx, cell.ID)
 			return nil, err
 		}
+		cell.Status = "ready"
 	}
 	ttl := parseTTL(req.TTL)
 	now := time.Now().UTC()
@@ -350,12 +406,38 @@ func (s *Server) createCellInner(ctx context.Context, req cellapi.CreateCellRequ
 		ExpiresAt:   now.Add(ttl),
 		Repo:        req.Repo,
 		Ref:         req.Ref,
+		Error:       cell.Error,
 	}
+	applyTimings(rec, cell.Timings)
 	if err := s.meta.Put(rec); err != nil {
 		_ = worker.DestroyCell(ctx, cell.ID)
 		return nil, err
 	}
 	return recordToInfo(rec), nil
+}
+
+func (s *Server) waitWorkerReady(ctx context.Context, worker workerapi.Worker, cell *workerapi.Cell) error {
+	for {
+		if cell.Status == "ready" {
+			return nil
+		}
+		if cell.Status == "error" {
+			if cell.Error != "" {
+				return fmt.Errorf("%s", cell.Error)
+			}
+			return fmt.Errorf("cell %s create failed", cell.ID)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(200 * time.Millisecond):
+		}
+		fresh, err := worker.GetCell(ctx, cell.ID)
+		if err != nil {
+			return err
+		}
+		*cell = *fresh
+	}
 }
 
 func (s *Server) handleList(w http.ResponseWriter, r *http.Request) {
@@ -374,7 +456,85 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, "cell not found")
 		return
 	}
-	writeJSON(w, http.StatusOK, recordToInfo(rec))
+	info, err := s.refreshCell(r.Context(), rec)
+	if err != nil {
+		// Meta is still authoritative if the worker is briefly unreachable.
+		writeJSON(w, http.StatusOK, recordToInfo(rec))
+		return
+	}
+	writeJSON(w, http.StatusOK, info)
+}
+
+// refreshCell pulls live status/timings from the worker for in-flight creates.
+func (s *Server) refreshCell(ctx context.Context, rec *meta.Record) (*cellapi.CellInfo, error) {
+	if rec.Status == "ready" || rec.Status == "error" {
+		return recordToInfo(rec), nil
+	}
+	w, ok := s.scheduler.Get(rec.WorkerID)
+	if !ok {
+		return recordToInfo(rec), nil
+	}
+	cell, err := w.GetCell(ctx, rec.ID)
+	if err != nil {
+		return nil, err
+	}
+	prev := rec.Status
+	rec.Status = cell.Status
+	rec.Error = cell.Error
+	applyTimings(rec, cell.Timings)
+	_ = s.meta.Put(rec)
+	// First transition to terminal state → record create metrics.
+	if prev != "ready" && prev != "error" && (cell.Status == "ready" || cell.Status == "error") {
+		var cerr error
+		if cell.Status == "error" {
+			cerr = fmt.Errorf("%s", cell.Error)
+		}
+		total := time.Duration(rec.TotalMS) * time.Millisecond
+		if total <= 0 {
+			total = time.Since(rec.CreatedAt)
+		}
+		s.metrics.ObserveCreate(total, cerr, strings.TrimSpace(rec.Repo) != "")
+		if cell.Timings != nil {
+			s.metrics.ObserveCreatePhases(cell.Timings)
+		}
+	}
+	return recordToInfo(rec), nil
+}
+
+func (s *Server) handleWorkspacePut(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	rec, ok := s.meta.Get(id)
+	if !ok {
+		writeErr(w, http.StatusNotFound, "cell not found")
+		return
+	}
+	// Ensure create finished before importing a dirty tree.
+	if _, err := s.refreshCell(r.Context(), rec); err == nil {
+		rec, _ = s.meta.Get(id)
+	}
+	if rec != nil && rec.Status != "ready" {
+		if rec.Status == "error" {
+			writeErr(w, http.StatusConflict, "cell create failed: "+rec.Error)
+			return
+		}
+		writeErr(w, http.StatusConflict, "cell not ready (status="+rec.Status+")")
+		return
+	}
+	worker, ok := s.scheduler.Get(rec.WorkerID)
+	if !ok {
+		writeErr(w, http.StatusInternalServerError, "worker not available")
+		return
+	}
+	arch, ok := worker.(workerapi.WorkspaceArchive)
+	if !ok {
+		writeErr(w, http.StatusNotImplemented, "worker does not support workspace import")
+		return
+	}
+	if err := arch.UnpackWorkspace(r.Context(), id, r.Body); err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
@@ -465,7 +625,7 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	info, err := s.createCell(r.Context(), req.CreateCellRequest)
+	info, err := s.createCell(r.Context(), req.CreateCellRequest, agentOwnerFingerprint(r))
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -498,13 +658,42 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 }
 
 func recordToInfo(r *meta.Record) *cellapi.CellInfo {
-	return &cellapi.CellInfo{
+	info := &cellapi.CellInfo{
 		ID:          r.ID,
 		WorkerID:    r.WorkerID,
 		Environment: r.Environment,
 		Status:      r.Status,
 		ExpiresAt:   r.ExpiresAt,
+		Error:       r.Error,
 	}
+	if r.FetchMS > 0 || r.RuntimeMS > 0 || r.SetupMS > 0 || r.TotalMS > 0 ||
+		r.Mirror != "" || r.CacheHit > 0 || r.CacheMiss > 0 || r.CachePull > 0 {
+		info.Timings = &cellapi.CreateTimings{
+			FetchMS:   r.FetchMS,
+			RuntimeMS: r.RuntimeMS,
+			SetupMS:   r.SetupMS,
+			TotalMS:   r.TotalMS,
+			Mirror:    r.Mirror,
+			CacheHit:  r.CacheHit,
+			CacheMiss: r.CacheMiss,
+			CachePull: r.CachePull,
+		}
+	}
+	return info
+}
+
+func applyTimings(rec *meta.Record, t *cellapi.CreateTimings) {
+	if rec == nil || t == nil {
+		return
+	}
+	rec.FetchMS = t.FetchMS
+	rec.RuntimeMS = t.RuntimeMS
+	rec.SetupMS = t.SetupMS
+	rec.TotalMS = t.TotalMS
+	rec.Mirror = t.Mirror
+	rec.CacheHit = t.CacheHit
+	rec.CacheMiss = t.CacheMiss
+	rec.CachePull = t.CachePull
 }
 
 func parseTTL(s string) time.Duration {

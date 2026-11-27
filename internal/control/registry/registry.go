@@ -15,30 +15,42 @@ import (
 	"time"
 )
 
+// HostResources is optional per-worker CPU/mem/disk from heartbeats.
+type HostResources struct {
+	CPURatio       float64 `json:"cpu_ratio,omitempty"`
+	MemUsedBytes   uint64  `json:"mem_used_bytes,omitempty"`
+	MemTotalBytes  uint64  `json:"mem_total_bytes,omitempty"`
+	DiskUsedBytes  uint64  `json:"disk_used_bytes,omitempty"`
+	DiskTotalBytes uint64  `json:"disk_total_bytes,omitempty"`
+}
+
 // Info is the control-plane view of a registered worker.
 type Info struct {
-	ID            string    `json:"id"`
-	Endpoint      string    `json:"endpoint,omitempty"` // e.g. unix:///… or http://host:port
-	MaxCells      int       `json:"max_cells"`
-	UsedCells     int       `json:"used_cells"`
-	CacheKeys     []string  `json:"cache_keys,omitempty"`
-	LastHeartbeat time.Time `json:"last_heartbeat"`
+	ID            string        `json:"id"`
+	Endpoint      string        `json:"endpoint,omitempty"` // e.g. unix:///… or http://host:port
+	MaxCells      int           `json:"max_cells"`
+	UsedCells     int           `json:"used_cells"`
+	CacheKeys     []string      `json:"cache_keys,omitempty"`
+	Host          HostResources `json:"host,omitempty"`
+	LastHeartbeat time.Time     `json:"last_heartbeat"`
 }
 
 // RegisterRequest is POST /v1/workers/register.
 type RegisterRequest struct {
-	ID        string   `json:"id"`
-	Endpoint  string   `json:"endpoint,omitempty"`
-	MaxCells  int      `json:"max_cells"`
-	UsedCells int      `json:"used_cells"`
-	CacheKeys []string `json:"cache_keys,omitempty"`
+	ID        string        `json:"id"`
+	Endpoint  string        `json:"endpoint,omitempty"`
+	MaxCells  int           `json:"max_cells"`
+	UsedCells int           `json:"used_cells"`
+	CacheKeys []string      `json:"cache_keys,omitempty"`
+	Host      HostResources `json:"host,omitempty"`
 }
 
 // HeartbeatRequest is POST /v1/workers/{id}/heartbeat.
 type HeartbeatRequest struct {
-	UsedCells int      `json:"used_cells"`
-	MaxCells  int      `json:"max_cells,omitempty"`
-	CacheKeys []string `json:"cache_keys,omitempty"`
+	UsedCells int           `json:"used_cells"`
+	MaxCells  int           `json:"max_cells,omitempty"`
+	CacheKeys []string      `json:"cache_keys,omitempty"`
+	Host      HostResources `json:"host,omitempty"`
 }
 
 // Registry is a worker directory with heartbeat expiry and optional disk persist.
@@ -85,6 +97,7 @@ func (r *Registry) Register(req RegisterRequest) (*Info, error) {
 		MaxCells:      req.MaxCells,
 		UsedCells:     req.UsedCells,
 		CacheKeys:     append([]string(nil), req.CacheKeys...),
+		Host:          req.Host,
 		LastHeartbeat: time.Now().UTC(),
 	}
 	r.workers[id] = info
@@ -109,6 +122,7 @@ func (r *Registry) Heartbeat(id string, req HeartbeatRequest) (*Info, error) {
 	if req.CacheKeys != nil {
 		info.CacheKeys = append([]string(nil), req.CacheKeys...)
 	}
+	info.Host = req.Host
 	info.LastHeartbeat = time.Now().UTC()
 	_ = r.persistLocked()
 	return cloneInfo(info), nil
