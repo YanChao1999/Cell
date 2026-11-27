@@ -1,5 +1,9 @@
 /bin/
 /.spark-smoke/
+# Local Cursor IDE state; keep shared MCP wiring tracked.
+.cursor/*
+!.cursor/mcp.json
+
 *.sock
 *.test
 __pycache__/
